@@ -1,5 +1,7 @@
 # SyncVault
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 SyncVault is a C++20 incremental backup and file synchronization project. The
 first milestone focuses on safe local snapshots, content-addressed chunk
 storage, restore, and repository verification. Network synchronization will be
@@ -52,3 +54,7 @@ build/debug/syncvault.exe init D:/syncvault-repository
 3. Interrupted writes never publish a partial snapshot.
 4. Repository verification detects missing or corrupted chunks.
 5. Automated tests cover normal operation and expected failure paths.
+
+## License
+
+SyncVault is released under the [MIT License](LICENSE).
