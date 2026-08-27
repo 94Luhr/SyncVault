@@ -3,6 +3,7 @@
 #include "syncvault/repository.hpp"
 #include "syncvault/scanner.hpp"
 #include "syncvault/sha256.hpp"
+#include "syncvault/snapshot.hpp"
 #include "syncvault/version.hpp"
 
 #include <exception>
@@ -20,23 +21,39 @@ void print_usage()
         << "  syncvault chunks <file>\n"
         << "  syncvault init <repository>\n"
         << "  syncvault scan <source>\n"
+        << "  syncvault snapshot create <repository> <source>\n"
+        << "  syncvault snapshot list <repository>\n"
         << "  syncvault store <repository> <file>\n"
         << "  syncvault version\n";
 }
 
-}  // namespace
+template <typename Character>
+bool argument_equals(const Character* argument, std::string_view expected)
+{
+    const std::basic_string_view<Character> value(argument);
+    if (value.size() != expected.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        if (value[index] != static_cast<Character>(expected[index])) {
+            return false;
+        }
+    }
+    return true;
+}
 
-int main(int argc, char* argv[])
+template <typename Character>
+int run_cli(int argc, Character* argv[])
 {
     try {
-        if (argc == 2 && std::string_view(argv[1]) == "version") {
+        if (argc == 2 && argument_equals(argv[1], "version")) {
             std::cout << "SyncVault " << syncvault::version << '\n';
             return 0;
         }
 
-        if (argc == 3 && std::string_view(argv[1]) == "chunks") {
+        if (argc == 3 && argument_equals(argv[1], "chunks")) {
             const auto chunks = syncvault::chunk_file(
-                std::filesystem::u8path(argv[2]));
+                std::filesystem::path(argv[2]));
 
             std::cout << "INDEX\tOFFSET\tSIZE\tSHA256\n";
             for (std::size_t index = 0; index < chunks.size(); ++index) {
@@ -48,17 +65,18 @@ int main(int argc, char* argv[])
             }
             return 0;
         }
-        if (argc == 3 && std::string_view(argv[1]) == "init") {
+
+        if (argc == 3 && argument_equals(argv[1], "init")) {
             const auto repository = syncvault::Repository::initialize(
-                std::filesystem::u8path(argv[2]));
+                std::filesystem::path(argv[2]));
             std::cout << "Initialized SyncVault repository at "
                       << repository.root().string() << '\n';
             return 0;
         }
 
-        if (argc == 3 && std::string_view(argv[1]) == "scan") {
+        if (argc == 3 && argument_equals(argv[1], "scan")) {
             const auto entries = syncvault::scan_directory(
-                std::filesystem::u8path(argv[2]));
+                std::filesystem::path(argv[2]));
 
             std::cout << "TYPE\tSIZE\tMODIFIED_NS\tPATH\n";
             for (const auto& entry : entries) {
@@ -70,10 +88,10 @@ int main(int argc, char* argv[])
             return 0;
         }
 
-        if (argc == 4 && std::string_view(argv[1]) == "store") {
+        if (argc == 4 && argument_equals(argv[1], "store")) {
             const auto result = syncvault::store_file_chunks(
-                std::filesystem::u8path(argv[2]),
-                std::filesystem::u8path(argv[3]));
+                std::filesystem::path(argv[2]),
+                std::filesystem::path(argv[3]));
 
             std::cout << "INDEX\tOFFSET\tSIZE\tSHA256\n";
             for (std::size_t index = 0; index < result.chunks.size(); ++index) {
@@ -89,10 +107,51 @@ int main(int argc, char* argv[])
             return 0;
         }
 
+        if (argc == 5 && argument_equals(argv[1], "snapshot")
+            && argument_equals(argv[2], "create")) {
+            const auto result = syncvault::create_snapshot(
+                std::filesystem::path(argv[3]),
+                std::filesystem::path(argv[4]));
+            std::cout << "Created snapshot " << result.snapshot.id << " with "
+                      << result.snapshot.file_count << " file(s), "
+                      << result.snapshot.directory_count << " directory(s), "
+                      << result.snapshot.total_bytes << " byte(s)\n"
+                      << "Stored " << result.chunks_written
+                      << " new chunk(s), reused " << result.chunks_reused
+                      << ", wrote " << result.bytes_written << " byte(s)\n";
+            return 0;
+        }
+
+        if (argc == 4 && argument_equals(argv[1], "snapshot")
+            && argument_equals(argv[2], "list")) {
+            const auto snapshots = syncvault::list_snapshots(
+                std::filesystem::path(argv[3]));
+            std::cout << "CREATED_NS\tFILES\tDIRECTORIES\tBYTES\tID\n";
+            for (const auto& snapshot : snapshots) {
+                std::cout << snapshot.created_at_ns << '\t'
+                          << snapshot.file_count << '\t'
+                          << snapshot.directory_count << '\t'
+                          << snapshot.total_bytes << '\t'
+                          << snapshot.id << '\n';
+            }
+            return 0;
+        }
+
         print_usage();
         return argc == 1 ? 0 : 2;
     } catch (const std::exception& error) {
         std::cerr << "error: " << error.what() << '\n';
         return 1;
     }
+}
+
+}  // namespace
+
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[])
+#else
+int main(int argc, char* argv[])
+#endif
+{
+    return run_cli(argc, argv);
 }

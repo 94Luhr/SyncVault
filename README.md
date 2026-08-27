@@ -16,7 +16,7 @@ added after the local storage model is reliable.
 - [x] Directory scanning and file metadata
 - [x] Fixed-size chunking and SHA-256 content hashing
 - [x] Atomic content-addressed chunk storage and deduplication
-- [ ] Snapshot creation and listing
+- [x] Atomic snapshot manifest creation and listing
 - [ ] File and directory restore
 - [ ] Integrity verification
 - [ ] Incremental network synchronization
@@ -65,6 +65,13 @@ chunks):
 
 ```powershell
 build/debug/syncvault.exe store D:/syncvault-repository D:/data/large-file.bin
+```
+
+Create and list directory snapshots:
+
+```powershell
+build/debug/syncvault.exe snapshot create D:/syncvault-repository D:/data
+build/debug/syncvault.exe snapshot list D:/syncvault-repository
 ```
 
 ## MVP acceptance criteria

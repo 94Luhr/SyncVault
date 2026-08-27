@@ -10,6 +10,7 @@ add_library(syncvault_core
     src/repository.cpp
     src/scanner.cpp
     src/sha256.cpp
+    src/snapshot.cpp
 )
 
 target_include_directories(syncvault_core
@@ -80,4 +81,15 @@ if(SYNCVAULT_BUILD_TESTS)
     endif()
 
     add_test(NAME syncvault_chunk_store_tests COMMAND syncvault_chunk_store_tests)
+
+    add_executable(syncvault_snapshot_tests tests/snapshot_test.cpp)
+    target_link_libraries(syncvault_snapshot_tests PRIVATE syncvault_core)
+
+    if(MSVC)
+        target_compile_options(syncvault_snapshot_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_snapshot_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME syncvault_snapshot_tests COMMAND syncvault_snapshot_tests)
 endif()
