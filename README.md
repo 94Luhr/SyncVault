@@ -13,7 +13,7 @@ added after the local storage model is reliable.
 - [x] Repository initialization
 - [x] Atomic repository configuration creation
 - [x] Automated repository layout tests
-- [ ] Directory scanning and file metadata
+- [x] Directory scanning and file metadata
 - [ ] Fixed-size chunking and content hashing
 - [ ] Snapshot creation and listing
 - [ ] File and directory restore
@@ -45,6 +45,12 @@ Initialize a repository:
 
 ```powershell
 build/debug/syncvault.exe init D:/syncvault-repository
+```
+
+Scan a source directory:
+
+```powershell
+build/debug/syncvault.exe scan D:/data
 ```
 
 ## MVP acceptance criteria

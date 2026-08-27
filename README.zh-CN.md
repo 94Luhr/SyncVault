@@ -10,7 +10,7 @@ SyncVault 是一个使用 C++20 开发的增量备份与文件同步项目。第
 - [x] 备份仓库初始化
 - [x] 原子创建仓库配置
 - [x] 仓库目录结构自动化测试
-- [ ] 目录扫描与文件元数据
+- [x] 目录扫描与文件元数据
 - [ ] 固定大小分块与内容哈希
 - [ ] 创建和列出快照
 - [ ] 文件及目录恢复
@@ -41,6 +41,12 @@ repository/
 
 ```powershell
 build/debug/syncvault.exe init D:/syncvault-repository
+```
+
+扫描源目录：
+
+```powershell
+build/debug/syncvault.exe scan D:/data
 ```
 
 ## MVP 验收标准
