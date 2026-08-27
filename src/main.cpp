@@ -1,4 +1,5 @@
 #include "syncvault/chunker.hpp"
+#include "syncvault/chunk_store.hpp"
 #include "syncvault/repository.hpp"
 #include "syncvault/scanner.hpp"
 #include "syncvault/sha256.hpp"
@@ -16,9 +17,10 @@ void print_usage()
     std::cout
         << "SyncVault " << syncvault::version << "\n\n"
         << "Usage:\n"
-<< "  syncvault chunks <file>\n"
+        << "  syncvault chunks <file>\n"
         << "  syncvault init <repository>\n"
         << "  syncvault scan <source>\n"
+        << "  syncvault store <repository> <file>\n"
         << "  syncvault version\n";
 }
 
@@ -65,6 +67,25 @@ int main(int argc, char* argv[])
                           << entry.modified_time_ns << '\t'
                           << syncvault::path_to_utf8(entry.relative_path) << '\n';
             }
+            return 0;
+        }
+
+        if (argc == 4 && std::string_view(argv[1]) == "store") {
+            const auto result = syncvault::store_file_chunks(
+                std::filesystem::u8path(argv[2]),
+                std::filesystem::u8path(argv[3]));
+
+            std::cout << "INDEX\tOFFSET\tSIZE\tSHA256\n";
+            for (std::size_t index = 0; index < result.chunks.size(); ++index) {
+                const auto& chunk = result.chunks[index];
+                std::cout << index << '\t'
+                          << chunk.offset << '\t'
+                          << chunk.size << '\t'
+                          << syncvault::to_hex(chunk.digest) << '\n';
+            }
+            std::cout << "Stored " << result.chunks_written
+                      << " new chunk(s), reused " << result.chunks_reused
+                      << ", wrote " << result.bytes_written << " byte(s)\n";
             return 0;
         }
 

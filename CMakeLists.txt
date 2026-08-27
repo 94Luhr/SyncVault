@@ -5,6 +5,7 @@ project(SyncVault VERSION 0.1.0 LANGUAGES CXX)
 option(SYNCVAULT_BUILD_TESTS "Build SyncVault tests" ON)
 
 add_library(syncvault_core
+    src/chunk_store.cpp
     src/chunker.cpp
     src/repository.cpp
     src/scanner.cpp
@@ -68,4 +69,15 @@ if(SYNCVAULT_BUILD_TESTS)
     endif()
 
     add_test(NAME syncvault_chunker_tests COMMAND syncvault_chunker_tests)
+
+    add_executable(syncvault_chunk_store_tests tests/chunk_store_test.cpp)
+    target_link_libraries(syncvault_chunk_store_tests PRIVATE syncvault_core)
+
+    if(MSVC)
+        target_compile_options(syncvault_chunk_store_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_chunk_store_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME syncvault_chunk_store_tests COMMAND syncvault_chunk_store_tests)
 endif()
