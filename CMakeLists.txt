@@ -7,7 +7,9 @@ option(SYNCVAULT_BUILD_TESTS "Build SyncVault tests" ON)
 add_library(syncvault_core
     src/chunk_store.cpp
     src/chunker.cpp
+    src/manifest.cpp
     src/repository.cpp
+    src/restore.cpp
     src/scanner.cpp
     src/sha256.cpp
     src/snapshot.cpp
@@ -92,4 +94,15 @@ if(SYNCVAULT_BUILD_TESTS)
     endif()
 
     add_test(NAME syncvault_snapshot_tests COMMAND syncvault_snapshot_tests)
+
+    add_executable(syncvault_restore_tests tests/restore_test.cpp)
+    target_link_libraries(syncvault_restore_tests PRIVATE syncvault_core)
+
+    if(MSVC)
+        target_compile_options(syncvault_restore_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_restore_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME syncvault_restore_tests COMMAND syncvault_restore_tests)
 endif()

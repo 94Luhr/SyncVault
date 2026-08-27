@@ -1,6 +1,7 @@
 #include "syncvault/chunker.hpp"
 #include "syncvault/chunk_store.hpp"
 #include "syncvault/repository.hpp"
+#include "syncvault/restore.hpp"
 #include "syncvault/scanner.hpp"
 #include "syncvault/sha256.hpp"
 #include "syncvault/snapshot.hpp"
@@ -23,6 +24,7 @@ void print_usage()
         << "  syncvault scan <source>\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
+        << "  syncvault snapshot restore <repository> <id> <destination>\n"
         << "  syncvault store <repository> <file>\n"
         << "  syncvault version\n";
 }
@@ -134,6 +136,18 @@ int run_cli(int argc, Character* argv[])
                           << snapshot.total_bytes << '\t'
                           << snapshot.id << '\n';
             }
+            return 0;
+        }
+
+        if (argc == 6 && argument_equals(argv[1], "snapshot")
+            && argument_equals(argv[2], "restore")) {
+            const auto result = syncvault::restore_snapshot(
+                std::filesystem::path(argv[3]),
+                std::filesystem::path(argv[4]).string(),
+                std::filesystem::path(argv[5]));
+            std::cout << "Restored " << result.files_restored << " file(s), "
+                      << result.directories_restored << " directory(s), "
+                      << result.bytes_restored << " byte(s)\n";
             return 0;
         }
 
