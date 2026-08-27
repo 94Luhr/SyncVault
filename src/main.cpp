@@ -6,6 +6,7 @@
 #include "syncvault/sha256.hpp"
 #include "syncvault/snapshot.hpp"
 #include "syncvault/version.hpp"
+#include "syncvault/verify.hpp"
 
 #include <exception>
 #include <filesystem>
@@ -26,6 +27,7 @@ void print_usage()
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
         << "  syncvault store <repository> <file>\n"
+        << "  syncvault verify <repository>\n"
         << "  syncvault version\n";
 }
 
@@ -149,6 +151,23 @@ int run_cli(int argc, Character* argv[])
                       << result.directories_restored << " directory(s), "
                       << result.bytes_restored << " byte(s)\n";
             return 0;
+        }
+
+        if (argc == 3 && argument_equals(argv[1], "verify")) {
+            const auto result = syncvault::verify_repository(
+                std::filesystem::path(argv[2]));
+            for (const auto& issue : result.issues) {
+                std::cout << syncvault::to_string(issue.kind) << '\t'
+                          << issue.object << '\t' << issue.message << '\n';
+            }
+            std::cout << (result.healthy() ? "OK" : "FAILED") << ": checked "
+                      << result.snapshots_checked << " snapshot(s), "
+                      << result.chunks_checked << " chunk(s), "
+                      << result.bytes_checked << " byte(s); "
+                      << result.unreferenced_chunks
+                      << " unreferenced chunk(s), " << result.issues.size()
+                      << " issue(s)\n";
+            return result.healthy() ? 0 : 1;
         }
 
         print_usage();

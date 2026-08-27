@@ -18,7 +18,7 @@ added after the local storage model is reliable.
 - [x] Atomic content-addressed chunk storage and deduplication
 - [x] Atomic snapshot manifest creation and listing
 - [x] Atomic file and directory restore with chunk verification
-- [ ] Integrity verification
+- [x] Repository, manifest, and chunk integrity verification
 - [ ] Incremental network synchronization
 
 ## Repository layout
@@ -78,6 +78,12 @@ Restore a snapshot into an absent or empty directory:
 
 ```powershell
 build/debug/syncvault.exe snapshot restore D:/syncvault-repository SNAPSHOT_ID D:/restored
+```
+
+Verify all manifests and stored chunks:
+
+```powershell
+build/debug/syncvault.exe verify D:/syncvault-repository
 ```
 
 ## MVP acceptance criteria

@@ -13,6 +13,7 @@ add_library(syncvault_core
     src/scanner.cpp
     src/sha256.cpp
     src/snapshot.cpp
+    src/verify.cpp
 )
 
 target_include_directories(syncvault_core
@@ -105,4 +106,15 @@ if(SYNCVAULT_BUILD_TESTS)
     endif()
 
     add_test(NAME syncvault_restore_tests COMMAND syncvault_restore_tests)
+
+    add_executable(syncvault_verify_tests tests/verify_test.cpp)
+    target_link_libraries(syncvault_verify_tests PRIVATE syncvault_core)
+
+    if(MSVC)
+        target_compile_options(syncvault_verify_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_verify_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME syncvault_verify_tests COMMAND syncvault_verify_tests)
 endif()
