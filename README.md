@@ -14,7 +14,7 @@ added after the local storage model is reliable.
 - [x] Atomic repository configuration creation
 - [x] Automated repository layout tests
 - [x] Directory scanning and file metadata
-- [ ] Fixed-size chunking and content hashing
+- [x] Fixed-size chunking and SHA-256 content hashing
 - [ ] Snapshot creation and listing
 - [ ] File and directory restore
 - [ ] Integrity verification
@@ -51,6 +51,12 @@ Scan a source directory:
 
 ```powershell
 build/debug/syncvault.exe scan D:/data
+```
+
+Split a file into 4 MiB chunks and print their SHA-256 digests:
+
+```powershell
+build/debug/syncvault.exe chunks D:/data/large-file.bin
 ```
 
 ## MVP acceptance criteria
