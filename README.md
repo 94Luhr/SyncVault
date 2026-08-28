@@ -21,7 +21,8 @@ added after the local storage model is reliable.
 - [x] Repository, manifest, and chunk integrity verification
 - [x] Incremental repository-to-repository synchronization
 - [x] Read-only synchronization planning and transfer estimation
-- [ ] Incremental network synchronization
+- [x] Versioned binary network frames with SHA-256 payload verification
+- [ ] TCP client/server incremental synchronization
 
 ## Repository layout
 
