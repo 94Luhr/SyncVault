@@ -13,6 +13,7 @@ add_library(syncvault_core
     src/scanner.cpp
     src/sha256.cpp
     src/snapshot.cpp
+    src/sync.cpp
     src/verify.cpp
 )
 
@@ -117,4 +118,15 @@ if(SYNCVAULT_BUILD_TESTS)
     endif()
 
     add_test(NAME syncvault_verify_tests COMMAND syncvault_verify_tests)
+
+    add_executable(syncvault_sync_tests tests/sync_test.cpp)
+    target_link_libraries(syncvault_sync_tests PRIVATE syncvault_core)
+
+    if(MSVC)
+        target_compile_options(syncvault_sync_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_sync_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME syncvault_sync_tests COMMAND syncvault_sync_tests)
 endif()

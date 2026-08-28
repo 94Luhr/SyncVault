@@ -5,6 +5,7 @@
 #include "syncvault/scanner.hpp"
 #include "syncvault/sha256.hpp"
 #include "syncvault/snapshot.hpp"
+#include "syncvault/sync.hpp"
 #include "syncvault/version.hpp"
 #include "syncvault/verify.hpp"
 
@@ -27,6 +28,7 @@ void print_usage()
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
         << "  syncvault store <repository> <file>\n"
+        << "  syncvault sync <source-repository> <destination-repository>\n"
         << "  syncvault verify <repository>\n"
         << "  syncvault version\n";
 }
@@ -168,6 +170,21 @@ int run_cli(int argc, Character* argv[])
                       << " unreferenced chunk(s), " << result.issues.size()
                       << " issue(s)\n";
             return result.healthy() ? 0 : 1;
+        }
+
+        if (argc == 4 && argument_equals(argv[1], "sync")) {
+            const auto result = syncvault::synchronize_repositories(
+                std::filesystem::path(argv[2]),
+                std::filesystem::path(argv[3]));
+            std::cout << "Copied " << result.chunks_copied
+                      << " chunk(s), reused " << result.chunks_reused
+                      << "; copied " << result.snapshots_copied
+                      << " snapshot(s), reused " << result.snapshots_reused
+                      << "; transferred " << result.content_bytes_copied
+                      << " content byte(s) and "
+                      << result.manifest_bytes_copied
+                      << " manifest byte(s)\n";
+            return 0;
         }
 
         print_usage();

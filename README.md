@@ -19,6 +19,7 @@ added after the local storage model is reliable.
 - [x] Atomic snapshot manifest creation and listing
 - [x] Atomic file and directory restore with chunk verification
 - [x] Repository, manifest, and chunk integrity verification
+- [x] Incremental repository-to-repository synchronization
 - [ ] Incremental network synchronization
 
 ## Repository layout
@@ -84,6 +85,12 @@ Verify all manifests and stored chunks:
 
 ```powershell
 build/debug/syncvault.exe verify D:/syncvault-repository
+```
+
+Synchronize only missing chunks and snapshots into another repository:
+
+```powershell
+build/debug/syncvault.exe sync D:/syncvault-repository D:/syncvault-copy
 ```
 
 ## MVP acceptance criteria
