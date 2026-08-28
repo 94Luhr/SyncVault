@@ -28,6 +28,7 @@ void print_usage()
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
         << "  syncvault store <repository> <file>\n"
+        << "  syncvault sync --dry-run <source-repository> <destination-repository>\n"
         << "  syncvault sync <source-repository> <destination-repository>\n"
         << "  syncvault verify <repository>\n"
         << "  syncvault version\n";
@@ -170,6 +171,22 @@ int run_cli(int argc, Character* argv[])
                       << " unreferenced chunk(s), " << result.issues.size()
                       << " issue(s)\n";
             return result.healthy() ? 0 : 1;
+        }
+
+        if (argc == 5 && argument_equals(argv[1], "sync")
+            && argument_equals(argv[2], "--dry-run")) {
+            const auto plan = syncvault::plan_synchronization(
+                std::filesystem::path(argv[3]),
+                std::filesystem::path(argv[4]));
+            std::cout << "Would copy " << plan.chunks_to_copy
+                      << " chunk(s), reuse " << plan.chunks_to_reuse
+                      << "; copy " << plan.snapshots_to_copy
+                      << " snapshot(s), reuse " << plan.snapshots_to_reuse
+                      << "; transfer " << plan.content_bytes_to_copy
+                      << " content byte(s) and "
+                      << plan.manifest_bytes_to_copy
+                      << " manifest byte(s)\n";
+            return 0;
         }
 
         if (argc == 4 && argument_equals(argv[1], "sync")) {

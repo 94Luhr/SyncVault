@@ -15,6 +15,7 @@
 #include <span>
 #include <stdexcept>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace syncvault {
@@ -162,9 +163,52 @@ bool copy_manifest(const std::filesystem::path& source,
     return true;
 }
 
-}  // namespace
+SyncPlan build_sync_plan(const std::filesystem::path& source,
+                         const std::filesystem::path& destination)
+{
+    SyncPlan plan;
+    auto summaries = list_snapshots(source);
+    std::map<std::string, ManifestChunk> chunks;
+    for (const auto& summary : summaries) {
+        const auto manifest = read_snapshot_manifest(source, summary.id);
+        for (const auto& entry : manifest.entries) {
+            for (const auto& chunk : entry.chunks) {
+                chunks.emplace(to_hex(chunk.digest), chunk);
+            }
+        }
 
-SyncResult synchronize_repositories(
+        const auto filename = summary.id + ".svsnap";
+        const auto source_path = source / "snapshots" / filename;
+        const auto destination_path = destination / "snapshots" / filename;
+        const auto source_contents = read_file(source_path);
+        if (std::filesystem::exists(destination_path)) {
+            if (read_file(destination_path) != source_contents) {
+                throw std::runtime_error(
+                    "destination contains a conflicting snapshot manifest");
+            }
+            ++plan.snapshots_to_reuse;
+        } else {
+            ++plan.snapshots_to_copy;
+            plan.manifest_bytes_to_copy +=
+                static_cast<std::uint64_t>(source_contents.size());
+        }
+    }
+
+    for (const auto& [id, chunk] : chunks) {
+        static_cast<void>(id);
+        const auto destination_path = chunk_path(destination, chunk.digest);
+        if (std::filesystem::exists(destination_path)) {
+            static_cast<void>(read_verified_chunk(destination_path, chunk));
+            ++plan.chunks_to_reuse;
+        } else {
+            ++plan.chunks_to_copy;
+            plan.content_bytes_to_copy += chunk.size;
+        }
+    }
+    return plan;
+}
+
+std::pair<std::filesystem::path, std::filesystem::path> validate_repositories(
     const std::filesystem::path& source_repository,
     const std::filesystem::path& destination_repository)
 {
@@ -189,6 +233,26 @@ SyncResult synchronize_repositories(
         throw std::runtime_error(
             "source repository failed integrity verification");
     }
+    return {source, destination};
+}
+
+}  // namespace
+
+SyncPlan plan_synchronization(
+    const std::filesystem::path& source_repository,
+    const std::filesystem::path& destination_repository)
+{
+    const auto [source, destination] =
+        validate_repositories(source_repository, destination_repository);
+    return build_sync_plan(source, destination);
+}
+
+SyncResult synchronize_repositories(
+    const std::filesystem::path& source_repository,
+    const std::filesystem::path& destination_repository)
+{
+    const auto [source, destination] =
+        validate_repositories(source_repository, destination_repository);
 
     auto summaries = list_snapshots(source);
     std::reverse(summaries.begin(), summaries.end());

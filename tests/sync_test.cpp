@@ -64,6 +64,19 @@ void repositories_synchronize_incrementally()
     const auto first_snapshot = syncvault::create_snapshot(
         source_repository, source_data, 4U);
 
+    const auto plan = syncvault::plan_synchronization(
+        source_repository, destination_repository);
+    require(plan.chunks_to_copy == 3U && plan.chunks_to_reuse == 0U,
+            "initial plan should include every chunk");
+    require(plan.snapshots_to_copy == 1U && plan.snapshots_to_reuse == 0U,
+            "initial plan should include its snapshot");
+    require(plan.content_bytes_to_copy == 10U,
+            "initial plan byte count is incorrect");
+    require(std::filesystem::is_empty(destination_repository / "chunks")
+                && std::filesystem::is_empty(
+                    destination_repository / "snapshots"),
+            "planning must not modify the destination repository");
+
     const auto first = syncvault::synchronize_repositories(
         source_repository, destination_repository);
     require(first.chunks_copied == 3U && first.chunks_reused == 0U,
@@ -88,6 +101,13 @@ void repositories_synchronize_incrementally()
     require(repeated.snapshots_copied == 0U
                 && repeated.snapshots_reused == 1U,
             "repeated synchronization should reuse its snapshot");
+    const auto repeated_plan = syncvault::plan_synchronization(
+        source_repository, destination_repository);
+    require(repeated_plan.chunks_to_copy == 0U
+                && repeated_plan.chunks_to_reuse == 3U
+                && repeated_plan.snapshots_to_copy == 0U
+                && repeated_plan.snapshots_to_reuse == 1U,
+            "repeated plan should require no transfer");
 
     std::ofstream(source_data / "data.bin", std::ios::binary | std::ios::trunc)
         << "abcdWXYZij";

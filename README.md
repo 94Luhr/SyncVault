@@ -20,6 +20,7 @@ added after the local storage model is reliable.
 - [x] Atomic file and directory restore with chunk verification
 - [x] Repository, manifest, and chunk integrity verification
 - [x] Incremental repository-to-repository synchronization
+- [x] Read-only synchronization planning and transfer estimation
 - [ ] Incremental network synchronization
 
 ## Repository layout
@@ -91,6 +92,12 @@ Synchronize only missing chunks and snapshots into another repository:
 
 ```powershell
 build/debug/syncvault.exe sync D:/syncvault-repository D:/syncvault-copy
+```
+
+Preview the required transfer without changing the destination:
+
+```powershell
+build/debug/syncvault.exe sync --dry-run D:/syncvault-repository D:/syncvault-copy
 ```
 
 ## MVP acceptance criteria
