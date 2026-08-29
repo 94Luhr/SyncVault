@@ -24,6 +24,7 @@ SyncVault 是一个使用 C++20 开发的增量备份与文件同步项目。第
 - [x] TCP 快照清单传输与校验恢复
 - [x] HMAC-SHA256 挑战响应认证
 - [x] 支持配置 IPv4 监听地址的认证局域网访问
+- [x] 支持连接错误隔离的持续同步服务
 
 ## 仓库目录结构
 
@@ -126,6 +127,16 @@ build/debug/syncvault.exe sync-network-auth D:/syncvault-repository 服务端局
 网卡，指定具体局域网地址更安全。未启用认证时，程序会拒绝非回环地址。密钥通过
 HMAC-SHA256 挑战响应验证，不会在连接中直接传输。Windows 防火墙可能需要为所选
 端口添加入站规则。
+
+如需持续接收多个客户端，请使用 `--sync-auth` 代替 `--once-sync-auth`：
+
+```powershell
+$env:SYNCVAULT_TOKEN = "请替换为足够长的随机密钥"
+build/debug/syncvault.exe serve --sync-auth D:/syncvault-copy 39763 0.0.0.0
+```
+
+按 `Ctrl+C` 可停止服务。密钥错误或报文异常的连接只会被单独拒绝，不会终止监听，
+后续合法客户端仍可继续同步。
 
 ## MVP 验收标准
 

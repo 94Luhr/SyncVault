@@ -253,6 +253,52 @@ void authenticated_server_supports_configurable_binding()
     }
 }
 
+void authenticated_server_recovers_after_rejected_client()
+{
+    TemporaryDirectory temporary;
+    const auto source = temporary.path() / "source";
+    const auto destination = temporary.path() / "destination";
+    syncvault::Repository::initialize(source);
+    syncvault::Repository::initialize(destination);
+
+    syncvault::ProtocolHandshakeServer server(
+        destination, 0U, "correct-token");
+    bool first_connection_rejected = false;
+    syncvault::NetworkChunkSyncResult accepted_result;
+    std::exception_ptr server_error;
+    std::thread server_thread([&] {
+        try {
+            try {
+                static_cast<void>(server.accept_chunk_sync_once());
+            } catch (const std::exception&) {
+                first_connection_rejected = true;
+            }
+            accepted_result = server.accept_chunk_sync_once();
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+
+    bool client_rejected = false;
+    try {
+        static_cast<void>(syncvault::push_repository_chunks(
+            source, "127.0.0.1", server.local_port(), "wrong-token"));
+    } catch (const std::exception&) {
+        client_rejected = true;
+    }
+    static_cast<void>(syncvault::push_repository_chunks(
+        source, "127.0.0.1", server.local_port(), "correct-token"));
+
+    server_thread.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+    require(client_rejected && first_connection_rejected,
+            "server should reject a client with the wrong token");
+    require(!accepted_result.peer.empty(),
+            "server did not accept a valid client after a rejection");
+}
+
 void non_repository_server_is_rejected()
 {
     TemporaryDirectory temporary;
@@ -275,6 +321,7 @@ int main()
         chunks_transfer_incrementally();
         authentication_accepts_matching_and_rejects_wrong_tokens();
         authenticated_server_supports_configurable_binding();
+        authenticated_server_recovers_after_rejected_client();
         non_repository_server_is_rejected();
         std::cout << "All network tests passed\n";
         return 0;

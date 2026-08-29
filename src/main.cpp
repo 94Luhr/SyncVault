@@ -35,6 +35,8 @@ void print_usage()
         << "  syncvault serve --once <repository> <port> [bind-address]\n"
         << "  syncvault serve --once-sync <repository> <port> [bind-address]\n"
         << "  syncvault serve --once-sync-auth <repository> <port> [bind-address]\n"
+        << "  syncvault serve --sync <repository> <port> [bind-address]\n"
+        << "  syncvault serve --sync-auth <repository> <port> [bind-address]\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
@@ -134,6 +136,40 @@ int run_cli(int argc, Character* argv[])
                       << result.manifest_bytes_transferred
                       << " manifest byte(s) to " << result.peer << '\n';
             return 0;
+        }
+
+        if ((argc == 5 || argc == 6)
+            && argument_equals(argv[1], "serve")
+            && (argument_equals(argv[2], "--sync")
+                || argument_equals(argv[2], "--sync-auth"))) {
+            const auto authenticated = argument_equals(argv[2], "--sync-auth");
+            syncvault::ProtocolHandshakeServer server(
+                std::filesystem::path(argv[3]), parse_port(argv[4]),
+                authenticated ? authentication_token_from_environment()
+                              : std::string{},
+                argc == 6 ? std::filesystem::path(argv[5]).string()
+                          : std::string{"127.0.0.1"});
+            std::cout << "Listening continuously for chunk sync on "
+                      << server.bind_address() << ':' << server.local_port()
+                      << " (press Ctrl+C to stop)\n";
+            while (true) {
+                try {
+                    const auto result = server.accept_chunk_sync_once();
+                    std::cout << "Received " << result.chunks_transferred
+                              << " chunk(s), reused " << result.chunks_reused
+                              << "; received " << result.manifests_transferred
+                              << " manifest(s), reused "
+                              << result.manifests_reused << "; wrote "
+                              << result.bytes_transferred
+                              << " content byte(s) and "
+                              << result.manifest_bytes_transferred
+                              << " manifest byte(s) from " << result.peer
+                              << '\n';
+                } catch (const std::exception& error) {
+                    std::cerr << "Rejected synchronization connection: "
+                              << error.what() << '\n';
+                }
+            }
         }
 
         if ((argc == 5 || argc == 6)

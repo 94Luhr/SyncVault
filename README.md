@@ -27,6 +27,7 @@ added after the local storage model is reliable.
 - [x] TCP snapshot manifest transfer with verified restore
 - [x] HMAC-SHA256 challenge-response authentication
 - [x] Authenticated LAN access with configurable IPv4 binding
+- [x] Continuous synchronization server with per-connection error isolation
 
 ## Repository layout
 
@@ -134,6 +135,17 @@ The optional final server argument is the numeric IPv4 bind address.
 Non-loopback binding is rejected unless authentication is enabled. The secret
 is used in an HMAC-SHA256 challenge-response and is never sent over the
 connection. Windows Firewall may require an inbound rule for the selected port.
+
+For a long-running authenticated server that accepts clients continuously, use
+`--sync-auth` instead of `--once-sync-auth`:
+
+```powershell
+$env:SYNCVAULT_TOKEN = "replace-with-a-long-random-secret"
+build/debug/syncvault.exe serve --sync-auth D:/syncvault-copy 39763 0.0.0.0
+```
+
+Press `Ctrl+C` to stop the server. A rejected or malformed client connection is
+reported without stopping the listener, so later valid clients can still sync.
 
 ## MVP acceptance criteria
 
