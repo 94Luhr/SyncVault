@@ -8,6 +8,7 @@ add_library(syncvault_core
     src/chunk_store.cpp
     src/chunker.cpp
     src/manifest.cpp
+    src/network.cpp
     src/protocol.cpp
     src/repository.cpp
     src/restore.cpp
@@ -24,6 +25,10 @@ target_include_directories(syncvault_core
 )
 
 target_compile_features(syncvault_core PUBLIC cxx_std_20)
+
+if(WIN32)
+    target_link_libraries(syncvault_core PRIVATE ws2_32)
+endif()
 
 if(MSVC)
     target_compile_options(syncvault_core PRIVATE /W4 /permissive- /utf-8)
@@ -42,6 +47,7 @@ endif()
 
 if(SYNCVAULT_BUILD_TESTS)
     enable_testing()
+    find_package(Threads REQUIRED)
 
     add_executable(syncvault_tests tests/repository_test.cpp)
     target_link_libraries(syncvault_tests PRIVATE syncvault_core)
@@ -141,4 +147,16 @@ if(SYNCVAULT_BUILD_TESTS)
     endif()
 
     add_test(NAME syncvault_protocol_tests COMMAND syncvault_protocol_tests)
+
+    add_executable(syncvault_network_tests tests/network_test.cpp)
+    target_link_libraries(syncvault_network_tests
+        PRIVATE syncvault_core Threads::Threads)
+
+    if(MSVC)
+        target_compile_options(syncvault_network_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_network_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+
+    add_test(NAME syncvault_network_tests COMMAND syncvault_network_tests)
 endif()

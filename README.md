@@ -22,7 +22,8 @@ added after the local storage model is reliable.
 - [x] Incremental repository-to-repository synchronization
 - [x] Read-only synchronization planning and transfer estimation
 - [x] Versioned binary network frames with SHA-256 payload verification
-- [ ] TCP client/server incremental synchronization
+- [x] TCP client/server connection and version handshake
+- [ ] TCP incremental chunk and snapshot transfer
 
 ## Repository layout
 
@@ -100,6 +101,17 @@ Preview the required transfer without changing the destination:
 ```powershell
 build/debug/syncvault.exe sync --dry-run D:/syncvault-repository D:/syncvault-copy
 ```
+
+Start a one-connection loopback server, then test the protocol handshake
+from another terminal:
+
+```powershell
+build/debug/syncvault.exe serve --once D:/syncvault-repository 39761
+build/debug/syncvault.exe ping 127.0.0.1 39761
+```
+
+The handshake server currently binds to `127.0.0.1` only. Remote access will be
+enabled after authentication is added.
 
 ## MVP acceptance criteria
 

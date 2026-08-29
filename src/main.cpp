@@ -1,5 +1,6 @@
 #include "syncvault/chunker.hpp"
 #include "syncvault/chunk_store.hpp"
+#include "syncvault/network.hpp"
 #include "syncvault/repository.hpp"
 #include "syncvault/restore.hpp"
 #include "syncvault/scanner.hpp"
@@ -9,9 +10,11 @@
 #include "syncvault/version.hpp"
 #include "syncvault/verify.hpp"
 
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <stdexcept>
 #include <string_view>
 
 namespace {
@@ -23,7 +26,9 @@ void print_usage()
         << "Usage:\n"
         << "  syncvault chunks <file>\n"
         << "  syncvault init <repository>\n"
+        << "  syncvault ping <host> <port>\n"
         << "  syncvault scan <source>\n"
+        << "  syncvault serve --once <repository> <port>\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
@@ -50,11 +55,58 @@ bool argument_equals(const Character* argument, std::string_view expected)
 }
 
 template <typename Character>
+std::uint16_t parse_port(const Character* value)
+{
+    std::uint32_t port = 0U;
+    if (*value == static_cast<Character>(0)) {
+        throw std::invalid_argument("port must be between 1 and 65535");
+    }
+    for (; *value != static_cast<Character>(0); ++value) {
+        if (*value < static_cast<Character>('0')
+            || *value > static_cast<Character>('9')) {
+            throw std::invalid_argument("port must be between 1 and 65535");
+        }
+        port = port * 10U
+            + static_cast<std::uint32_t>(*value - static_cast<Character>('0'));
+        if (port > 65'535U) {
+            throw std::invalid_argument("port must be between 1 and 65535");
+        }
+    }
+    if (port == 0U) {
+        throw std::invalid_argument("port must be between 1 and 65535");
+    }
+    return static_cast<std::uint16_t>(port);
+}
+
+template <typename Character>
 int run_cli(int argc, Character* argv[])
 {
     try {
         if (argc == 2 && argument_equals(argv[1], "version")) {
             std::cout << "SyncVault " << syncvault::version << '\n';
+            return 0;
+        }
+
+        if (argc == 4 && argument_equals(argv[1], "ping")) {
+            const auto host = std::filesystem::path(argv[2]).string();
+            const auto result = syncvault::perform_protocol_handshake(
+                host, parse_port(argv[3]));
+            std::cout << "Connected to " << result.peer
+                      << " using SyncVault protocol "
+                      << result.protocol_version << '\n';
+            return 0;
+        }
+
+        if (argc == 5 && argument_equals(argv[1], "serve")
+            && argument_equals(argv[2], "--once")) {
+            syncvault::ProtocolHandshakeServer server(
+                std::filesystem::path(argv[3]), parse_port(argv[4]));
+            std::cout << "Listening on 127.0.0.1:" << server.local_port()
+                      << '\n';
+            const auto result = server.accept_once();
+            std::cout << "Accepted " << result.peer
+                      << " using SyncVault protocol "
+                      << result.protocol_version << '\n';
             return 0;
         }
 
