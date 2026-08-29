@@ -23,7 +23,8 @@ added after the local storage model is reliable.
 - [x] Read-only synchronization planning and transfer estimation
 - [x] Versioned binary network frames with SHA-256 payload verification
 - [x] TCP client/server connection and version handshake
-- [ ] TCP incremental chunk and snapshot transfer
+- [x] TCP incremental content-addressed chunk transfer
+- [ ] TCP snapshot manifest transfer
 
 ## Repository layout
 
@@ -108,6 +109,13 @@ from another terminal:
 ```powershell
 build/debug/syncvault.exe serve --once D:/syncvault-repository 39761
 build/debug/syncvault.exe ping 127.0.0.1 39761
+```
+
+Transfer only missing content-addressed chunks:
+
+```powershell
+build/debug/syncvault.exe serve --once-chunks D:/syncvault-copy 39762
+build/debug/syncvault.exe push-chunks D:/syncvault-repository 127.0.0.1 39762
 ```
 
 The handshake server currently binds to `127.0.0.1` only. Remote access will be

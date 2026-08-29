@@ -27,8 +27,10 @@ void print_usage()
         << "  syncvault chunks <file>\n"
         << "  syncvault init <repository>\n"
         << "  syncvault ping <host> <port>\n"
+        << "  syncvault push-chunks <source-repository> <host> <port>\n"
         << "  syncvault scan <source>\n"
         << "  syncvault serve --once <repository> <port>\n"
+        << "  syncvault serve --once-chunks <repository> <port>\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
@@ -94,6 +96,32 @@ int run_cli(int argc, Character* argv[])
             std::cout << "Connected to " << result.peer
                       << " using SyncVault protocol "
                       << result.protocol_version << '\n';
+            return 0;
+        }
+
+        if (argc == 5 && argument_equals(argv[1], "push-chunks")) {
+            const auto result = syncvault::push_repository_chunks(
+                std::filesystem::path(argv[2]),
+                std::filesystem::path(argv[3]).string(),
+                parse_port(argv[4]));
+            std::cout << "Transferred " << result.chunks_transferred
+                      << " chunk(s), reused " << result.chunks_reused
+                      << ", sent " << result.bytes_transferred
+                      << " byte(s) to " << result.peer << '\n';
+            return 0;
+        }
+
+        if (argc == 5 && argument_equals(argv[1], "serve")
+            && argument_equals(argv[2], "--once-chunks")) {
+            syncvault::ProtocolHandshakeServer server(
+                std::filesystem::path(argv[3]), parse_port(argv[4]));
+            std::cout << "Listening for chunk sync on 127.0.0.1:"
+                      << server.local_port() << '\n';
+            const auto result = server.accept_chunk_sync_once();
+            std::cout << "Received " << result.chunks_transferred
+                      << " chunk(s), reused " << result.chunks_reused
+                      << ", wrote " << result.bytes_transferred
+                      << " byte(s) from " << result.peer << '\n';
             return 0;
         }
 

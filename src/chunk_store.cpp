@@ -18,16 +18,16 @@ namespace {
 std::atomic<std::uint64_t> temporary_sequence{0U};
 
 void verify_existing_chunk(const std::filesystem::path& path,
-                           std::span<const std::uint8_t> expected,
+                           std::size_t expected_size,
                            const Sha256Digest& digest)
 {
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
-    if (error || size != expected.size()) {
+    if (error || size != expected_size) {
         throw std::runtime_error("existing chunk failed integrity check");
     }
 
-    std::vector<std::uint8_t> contents(expected.size());
+    std::vector<std::uint8_t> contents(expected_size);
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         throw std::runtime_error("cannot open existing chunk");
@@ -58,7 +58,7 @@ bool store_chunk(const std::filesystem::path& root,
 {
     const auto destination = chunk_path(root, digest);
     if (std::filesystem::exists(destination)) {
-        verify_existing_chunk(destination, contents, digest);
+        verify_existing_chunk(destination, contents.size(), digest);
         return false;
     }
 
@@ -87,7 +87,7 @@ bool store_chunk(const std::filesystem::path& root,
         }
 
         if (std::filesystem::exists(destination)) {
-            verify_existing_chunk(destination, contents, digest);
+            verify_existing_chunk(destination, contents.size(), digest);
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);
             return false;
@@ -108,6 +108,37 @@ std::filesystem::path chunk_path(const std::filesystem::path& repository_root,
 {
     const auto hex = to_hex(digest);
     return repository_root / "chunks" / hex.substr(0U, 2U) / hex.substr(2U);
+}
+
+bool has_verified_chunk(const std::filesystem::path& repository_root,
+                        const Sha256Digest& digest,
+                        std::uint64_t expected_size)
+{
+    if (!Repository::is_repository(repository_root)) {
+        throw std::invalid_argument("path is not a SyncVault repository");
+    }
+    const auto path = chunk_path(repository_root, digest);
+    if (!std::filesystem::exists(path)) {
+        return false;
+    }
+    if (expected_size > std::numeric_limits<std::size_t>::max()) {
+        throw std::length_error("chunk exceeds platform size limits");
+    }
+    verify_existing_chunk(path, static_cast<std::size_t>(expected_size), digest);
+    return true;
+}
+
+bool store_verified_chunk(const std::filesystem::path& repository_root,
+                          std::span<const std::uint8_t> contents,
+                          const Sha256Digest& digest)
+{
+    if (!Repository::is_repository(repository_root)) {
+        throw std::invalid_argument("path is not a SyncVault repository");
+    }
+    if (sha256(contents) != digest) {
+        throw std::runtime_error("chunk failed SHA-256 verification");
+    }
+    return store_chunk(repository_root, contents, digest);
 }
 
 StoreResult store_file_chunks(const std::filesystem::path& repository_root,

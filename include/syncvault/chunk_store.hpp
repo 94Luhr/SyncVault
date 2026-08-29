@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <vector>
 
 namespace syncvault {
@@ -18,6 +19,16 @@ struct StoreResult {
 
 [[nodiscard]] std::filesystem::path chunk_path(
     const std::filesystem::path& repository_root,
+    const Sha256Digest& digest);
+
+[[nodiscard]] bool has_verified_chunk(
+    const std::filesystem::path& repository_root,
+    const Sha256Digest& digest,
+    std::uint64_t expected_size);
+
+[[nodiscard]] bool store_verified_chunk(
+    const std::filesystem::path& repository_root,
+    std::span<const std::uint8_t> contents,
     const Sha256Digest& digest);
 
 [[nodiscard]] StoreResult store_file_chunks(

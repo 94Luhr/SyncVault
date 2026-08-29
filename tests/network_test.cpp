@@ -1,11 +1,15 @@
 #include "syncvault/network.hpp"
 
+#include "syncvault/chunk_store.hpp"
+#include "syncvault/manifest.hpp"
 #include "syncvault/protocol.hpp"
 #include "syncvault/repository.hpp"
+#include "syncvault/snapshot.hpp"
 
 #include <chrono>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -83,6 +87,76 @@ void client_and_server_complete_handshake()
     require(!server_result.peer.empty(), "server did not report its peer");
 }
 
+void chunks_transfer_incrementally()
+{
+    TemporaryDirectory temporary;
+    const auto source_repository = temporary.path() / "source-repository";
+    const auto destination_repository =
+        temporary.path() / "destination-repository";
+    const auto source_data = temporary.path() / "source-data";
+    syncvault::Repository::initialize(source_repository);
+    syncvault::Repository::initialize(destination_repository);
+    std::filesystem::create_directories(source_data);
+    std::ofstream(source_data / "data.bin", std::ios::binary) << "abcdefghij";
+    const auto snapshot =
+        syncvault::create_snapshot(source_repository, source_data, 4U);
+    syncvault::ProtocolHandshakeServer server(destination_repository, 0U);
+
+    auto run_once = [&](syncvault::NetworkChunkSyncResult& server_result) {
+        std::exception_ptr server_error;
+        std::thread server_thread([&] {
+            try {
+                server_result = server.accept_chunk_sync_once();
+            } catch (...) {
+                server_error = std::current_exception();
+            }
+        });
+        syncvault::NetworkChunkSyncResult client_result;
+        try {
+            client_result = syncvault::push_repository_chunks(
+                source_repository, "127.0.0.1", server.local_port());
+        } catch (...) {
+            server_thread.join();
+            throw;
+        }
+        server_thread.join();
+        if (server_error) {
+            std::rethrow_exception(server_error);
+        }
+        return client_result;
+    };
+
+    syncvault::NetworkChunkSyncResult first_server;
+    const auto first_client = run_once(first_server);
+    require(first_client.chunks_transferred == 3U
+                && first_client.chunks_reused == 0U
+                && first_client.bytes_transferred == 10U,
+            "first network sync should transfer every unique chunk");
+    require(first_server.chunks_transferred == 3U
+                && first_server.bytes_transferred == 10U,
+            "server transfer statistics are incorrect");
+
+    const auto manifest =
+        syncvault::read_snapshot_manifest(source_repository, snapshot.snapshot.id);
+    for (const auto& entry : manifest.entries) {
+        for (const auto& chunk : entry.chunks) {
+            require(syncvault::has_verified_chunk(
+                        destination_repository, chunk.digest, chunk.size),
+                    "destination is missing a verified network chunk");
+        }
+    }
+
+    syncvault::NetworkChunkSyncResult second_server;
+    const auto second_client = run_once(second_server);
+    require(second_client.chunks_transferred == 0U
+                && second_client.chunks_reused == 3U
+                && second_client.bytes_transferred == 0U,
+            "repeated network sync should transfer no chunk bytes");
+    require(second_server.chunks_transferred == 0U
+                && second_server.chunks_reused == 3U,
+            "server should reuse every existing chunk");
+}
+
 void non_repository_server_is_rejected()
 {
     TemporaryDirectory temporary;
@@ -102,6 +176,7 @@ int main()
 {
     try {
         client_and_server_complete_handshake();
+        chunks_transfer_incrementally();
         non_repository_server_is_rejected();
         std::cout << "All network tests passed\n";
         return 0;
