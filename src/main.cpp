@@ -32,9 +32,9 @@ void print_usage()
         << "  syncvault sync-network <source-repository> <host> <port>\n"
         << "  syncvault sync-network-auth <source-repository> <host> <port>\n"
         << "  syncvault scan <source>\n"
-        << "  syncvault serve --once <repository> <port>\n"
-        << "  syncvault serve --once-sync <repository> <port>\n"
-        << "  syncvault serve --once-sync-auth <repository> <port>\n"
+        << "  syncvault serve --once <repository> <port> [bind-address]\n"
+        << "  syncvault serve --once-sync <repository> <port> [bind-address]\n"
+        << "  syncvault serve --once-sync-auth <repository> <port> [bind-address]\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
@@ -136,7 +136,8 @@ int run_cli(int argc, Character* argv[])
             return 0;
         }
 
-        if (argc == 5 && argument_equals(argv[1], "serve")
+        if ((argc == 5 || argc == 6)
+            && argument_equals(argv[1], "serve")
             && (argument_equals(argv[2], "--once-sync")
                 || argument_equals(argv[2], "--once-sync-auth")
                 || argument_equals(argv[2], "--once-chunks"))) {
@@ -145,9 +146,12 @@ int run_cli(int argc, Character* argv[])
             syncvault::ProtocolHandshakeServer server(
                 std::filesystem::path(argv[3]), parse_port(argv[4]),
                 authenticated ? authentication_token_from_environment()
-                              : std::string{});
-            std::cout << "Listening for chunk sync on 127.0.0.1:"
-                      << server.local_port() << '\n';
+                              : std::string{},
+                argc == 6 ? std::filesystem::path(argv[5]).string()
+                          : std::string{"127.0.0.1"});
+            std::cout << "Listening for chunk sync on "
+                      << server.bind_address() << ':' << server.local_port()
+                      << '\n';
             const auto result = server.accept_chunk_sync_once();
             std::cout << "Received " << result.chunks_transferred
                       << " chunk(s), reused " << result.chunks_reused
@@ -160,12 +164,15 @@ int run_cli(int argc, Character* argv[])
             return 0;
         }
 
-        if (argc == 5 && argument_equals(argv[1], "serve")
+        if ((argc == 5 || argc == 6)
+            && argument_equals(argv[1], "serve")
             && argument_equals(argv[2], "--once")) {
             syncvault::ProtocolHandshakeServer server(
-                std::filesystem::path(argv[3]), parse_port(argv[4]));
-            std::cout << "Listening on 127.0.0.1:" << server.local_port()
-                      << '\n';
+                std::filesystem::path(argv[3]), parse_port(argv[4]), {},
+                argc == 6 ? std::filesystem::path(argv[5]).string()
+                          : std::string{"127.0.0.1"});
+            std::cout << "Listening on " << server.bind_address() << ':'
+                      << server.local_port() << '\n';
             const auto result = server.accept_once();
             std::cout << "Accepted " << result.peer
                       << " using SyncVault protocol "

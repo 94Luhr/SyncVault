@@ -26,7 +26,7 @@ added after the local storage model is reliable.
 - [x] TCP incremental content-addressed chunk transfer
 - [x] TCP snapshot manifest transfer with verified restore
 - [x] HMAC-SHA256 challenge-response authentication
-- [ ] Authenticated LAN access
+- [x] Authenticated LAN access with configurable IPv4 binding
 
 ## Repository layout
 
@@ -125,13 +125,15 @@ terminals and use the authenticated commands:
 
 ```powershell
 $env:SYNCVAULT_TOKEN = "replace-with-a-long-random-secret"
-build/debug/syncvault.exe serve --once-sync-auth D:/syncvault-copy 39763
-build/debug/syncvault.exe sync-network-auth D:/syncvault-repository 127.0.0.1 39763
+build/debug/syncvault.exe serve --once-sync-auth D:/syncvault-copy 39763 0.0.0.0
+build/debug/syncvault.exe sync-network-auth D:/syncvault-repository SERVER_LAN_IP 39763
 ```
 
-The secret is used in an HMAC-SHA256 challenge-response and is never sent over
-the connection. The server currently binds to `127.0.0.1` only. Remote access will be
-enabled after authentication is added.
+The optional final server argument is the numeric IPv4 bind address.
+`0.0.0.0` listens on every IPv4 interface; a specific LAN address is safer.
+Non-loopback binding is rejected unless authentication is enabled. The secret
+is used in an HMAC-SHA256 challenge-response and is never sent over the
+connection. Windows Firewall may require an inbound rule for the selected port.
 
 ## MVP acceptance criteria
 

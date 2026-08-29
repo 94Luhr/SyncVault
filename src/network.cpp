@@ -475,9 +475,18 @@ std::uint16_t exchange_server_hello(NativeSocket socket)
 ProtocolHandshakeServer::ProtocolHandshakeServer(
     const std::filesystem::path& repository,
     std::uint16_t port,
-    std::string authentication_token)
+    std::string authentication_token,
+    std::string bind_address)
 {
     authentication_token_ = std::move(authentication_token);
+    bind_address_ = std::move(bind_address);
+    if (bind_address_.empty()) {
+        throw std::invalid_argument("server bind address is required");
+    }
+    if (bind_address_ != "127.0.0.1" && authentication_token_.empty()) {
+        throw std::invalid_argument(
+            "non-loopback listeners require authentication");
+    }
     repository_ = std::filesystem::absolute(repository).lexically_normal();
     if (!Repository::is_repository(repository_)) {
         throw std::invalid_argument("server path is not a SyncVault repository");
@@ -497,7 +506,10 @@ ProtocolHandshakeServer::ProtocolHandshakeServer(
 
         sockaddr_in address{};
         address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (inet_pton(AF_INET, bind_address_.c_str(), &address.sin_addr) != 1) {
+            throw std::invalid_argument(
+                "server bind address must be a numeric IPv4 address");
+        }
         address.sin_port = htons(port);
         if (bind(listener, reinterpret_cast<const sockaddr*>(&address),
                  sizeof(address)) != 0) {
@@ -533,6 +545,11 @@ ProtocolHandshakeServer::~ProtocolHandshakeServer()
 std::uint16_t ProtocolHandshakeServer::local_port() const noexcept
 {
     return local_port_;
+}
+
+const std::string& ProtocolHandshakeServer::bind_address() const noexcept
+{
+    return bind_address_;
 }
 
 HandshakeResult ProtocolHandshakeServer::accept_once()

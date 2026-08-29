@@ -26,19 +26,22 @@ public:
     explicit ProtocolHandshakeServer(
         const std::filesystem::path& repository,
         std::uint16_t port,
-        std::string authentication_token = {});
+        std::string authentication_token = {},
+        std::string bind_address = "127.0.0.1");
     ~ProtocolHandshakeServer();
 
     ProtocolHandshakeServer(const ProtocolHandshakeServer&) = delete;
     ProtocolHandshakeServer& operator=(const ProtocolHandshakeServer&) = delete;
 
     [[nodiscard]] std::uint16_t local_port() const noexcept;
+    [[nodiscard]] const std::string& bind_address() const noexcept;
     [[nodiscard]] HandshakeResult accept_once();
     [[nodiscard]] NetworkChunkSyncResult accept_chunk_sync_once();
 
 private:
     std::filesystem::path repository_;
     std::string authentication_token_;
+    std::string bind_address_;
     std::uintptr_t listener_ = static_cast<std::uintptr_t>(-1);
     std::uint16_t local_port_ = 0U;
     bool socket_runtime_initialized_ = false;

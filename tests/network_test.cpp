@@ -214,6 +214,45 @@ void authentication_accepts_matching_and_rejects_wrong_tokens()
     attempt("wrong token", false);
 }
 
+void authenticated_server_supports_configurable_binding()
+{
+    TemporaryDirectory temporary;
+    const auto source = temporary.path() / "source";
+    const auto destination = temporary.path() / "destination";
+    syncvault::Repository::initialize(source);
+    syncvault::Repository::initialize(destination);
+
+    bool unauthenticated_rejected = false;
+    try {
+        syncvault::ProtocolHandshakeServer unsafe(
+            destination, 0U, {}, "0.0.0.0");
+        static_cast<void>(unsafe);
+    } catch (const std::invalid_argument&) {
+        unauthenticated_rejected = true;
+    }
+    require(unauthenticated_rejected,
+            "non-loopback listener should require authentication");
+
+    syncvault::ProtocolHandshakeServer server(
+        destination, 0U, "lan-test-token", "0.0.0.0");
+    require(server.bind_address() == "0.0.0.0",
+            "server did not retain its configured bind address");
+    std::exception_ptr server_error;
+    std::thread server_thread([&] {
+        try {
+            static_cast<void>(server.accept_chunk_sync_once());
+        } catch (...) {
+            server_error = std::current_exception();
+        }
+    });
+    static_cast<void>(syncvault::push_repository_chunks(
+        source, "127.0.0.1", server.local_port(), "lan-test-token"));
+    server_thread.join();
+    if (server_error) {
+        std::rethrow_exception(server_error);
+    }
+}
+
 void non_repository_server_is_rejected()
 {
     TemporaryDirectory temporary;
@@ -235,6 +274,7 @@ int main()
         client_and_server_complete_handshake();
         chunks_transfer_incrementally();
         authentication_accepts_matching_and_rejects_wrong_tokens();
+        authenticated_server_supports_configurable_binding();
         non_repository_server_is_rejected();
         std::cout << "All network tests passed\n";
         return 0;
