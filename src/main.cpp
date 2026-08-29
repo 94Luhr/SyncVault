@@ -11,10 +11,12 @@
 #include "syncvault/verify.hpp"
 
 #include <cstdint>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -28,9 +30,11 @@ void print_usage()
         << "  syncvault init <repository>\n"
         << "  syncvault ping <host> <port>\n"
         << "  syncvault sync-network <source-repository> <host> <port>\n"
+        << "  syncvault sync-network-auth <source-repository> <host> <port>\n"
         << "  syncvault scan <source>\n"
         << "  syncvault serve --once <repository> <port>\n"
         << "  syncvault serve --once-sync <repository> <port>\n"
+        << "  syncvault serve --once-sync-auth <repository> <port>\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
@@ -80,6 +84,16 @@ std::uint16_t parse_port(const Character* value)
     return static_cast<std::uint16_t>(port);
 }
 
+std::string authentication_token_from_environment()
+{
+    const auto* token = std::getenv("SYNCVAULT_TOKEN");
+    if (token == nullptr || *token == '\0') {
+        throw std::invalid_argument(
+            "SYNCVAULT_TOKEN must be set for authenticated commands");
+    }
+    return token;
+}
+
 template <typename Character>
 int run_cli(int argc, Character* argv[])
 {
@@ -101,11 +115,16 @@ int run_cli(int argc, Character* argv[])
 
         if (argc == 5
             && (argument_equals(argv[1], "sync-network")
+                || argument_equals(argv[1], "sync-network-auth")
                 || argument_equals(argv[1], "push-chunks"))) {
+            const auto authenticated =
+                argument_equals(argv[1], "sync-network-auth");
             const auto result = syncvault::push_repository_chunks(
                 std::filesystem::path(argv[2]),
                 std::filesystem::path(argv[3]).string(),
-                parse_port(argv[4]));
+                parse_port(argv[4]),
+                authenticated ? authentication_token_from_environment()
+                              : std::string{});
             std::cout << "Transferred " << result.chunks_transferred
                       << " chunk(s), reused " << result.chunks_reused
                       << "; transferred " << result.manifests_transferred
@@ -119,9 +138,14 @@ int run_cli(int argc, Character* argv[])
 
         if (argc == 5 && argument_equals(argv[1], "serve")
             && (argument_equals(argv[2], "--once-sync")
+                || argument_equals(argv[2], "--once-sync-auth")
                 || argument_equals(argv[2], "--once-chunks"))) {
+            const auto authenticated =
+                argument_equals(argv[2], "--once-sync-auth");
             syncvault::ProtocolHandshakeServer server(
-                std::filesystem::path(argv[3]), parse_port(argv[4]));
+                std::filesystem::path(argv[3]), parse_port(argv[4]),
+                authenticated ? authentication_token_from_environment()
+                              : std::string{});
             std::cout << "Listening for chunk sync on 127.0.0.1:"
                       << server.local_port() << '\n';
             const auto result = server.accept_chunk_sync_once();

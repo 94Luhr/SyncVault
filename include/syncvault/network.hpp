@@ -25,7 +25,8 @@ class ProtocolHandshakeServer {
 public:
     explicit ProtocolHandshakeServer(
         const std::filesystem::path& repository,
-        std::uint16_t port);
+        std::uint16_t port,
+        std::string authentication_token = {});
     ~ProtocolHandshakeServer();
 
     ProtocolHandshakeServer(const ProtocolHandshakeServer&) = delete;
@@ -37,6 +38,7 @@ public:
 
 private:
     std::filesystem::path repository_;
+    std::string authentication_token_;
     std::uintptr_t listener_ = static_cast<std::uintptr_t>(-1);
     std::uint16_t local_port_ = 0U;
     bool socket_runtime_initialized_ = false;
@@ -45,10 +47,12 @@ private:
 [[nodiscard]] NetworkChunkSyncResult push_repository_chunks(
     const std::filesystem::path& source_repository,
     const std::string& host,
-    std::uint16_t port);
+    std::uint16_t port,
+    std::string authentication_token = {});
 
 [[nodiscard]] HandshakeResult perform_protocol_handshake(
     const std::string& host,
-    std::uint16_t port);
+    std::uint16_t port,
+    std::string authentication_token = {});
 
 }  // namespace syncvault

@@ -5,6 +5,7 @@ project(SyncVault VERSION 0.1.0 LANGUAGES CXX)
 option(SYNCVAULT_BUILD_TESTS "Build SyncVault tests" ON)
 
 add_library(syncvault_core
+    src/auth.cpp
     src/chunk_store.cpp
     src/chunker.cpp
     src/manifest.cpp
@@ -48,6 +49,15 @@ endif()
 if(SYNCVAULT_BUILD_TESTS)
     enable_testing()
     find_package(Threads REQUIRED)
+
+    add_executable(syncvault_auth_tests tests/auth_test.cpp)
+    target_link_libraries(syncvault_auth_tests PRIVATE syncvault_core)
+    if(MSVC)
+        target_compile_options(syncvault_auth_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(syncvault_auth_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME syncvault_auth_tests COMMAND syncvault_auth_tests)
 
     add_executable(syncvault_tests tests/repository_test.cpp)
     target_link_libraries(syncvault_tests PRIVATE syncvault_core)

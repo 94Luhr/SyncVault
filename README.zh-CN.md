@@ -22,7 +22,8 @@ SyncVault 是一个使用 C++20 开发的增量备份与文件同步项目。第
 - [x] TCP 客户端/服务端连接与版本握手
 - [x] TCP 内容寻址数据块增量传输
 - [x] TCP 快照清单传输与校验恢复
-- [ ] 带身份认证的远程访问
+- [x] HMAC-SHA256 挑战响应认证
+- [ ] 带身份认证的局域网访问
 
 ## 仓库目录结构
 
@@ -113,7 +114,16 @@ build/debug/syncvault.exe serve --once-sync D:/syncvault-copy 39762
 build/debug/syncvault.exe sync-network D:/syncvault-repository 127.0.0.1 39762
 ```
 
-当前握手服务端仅绑定 `127.0.0.1`。加入身份认证后再开放远程访问。
+如需认证同步，在两个终端设置相同密钥并使用认证命令：
+
+```powershell
+$env:SYNCVAULT_TOKEN = "请替换为足够长的随机密钥"
+build/debug/syncvault.exe serve --once-sync-auth D:/syncvault-copy 39763
+build/debug/syncvault.exe sync-network-auth D:/syncvault-repository 127.0.0.1 39763
+```
+
+密钥通过 HMAC-SHA256 挑战响应进行验证，不会在连接中直接传输。当前服务端仍仅绑定
+`127.0.0.1`。加入身份认证后再开放远程访问。
 
 ## MVP 验收标准
 

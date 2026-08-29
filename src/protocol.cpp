@@ -46,7 +46,8 @@ std::uint64_t read_u64(std::span<const std::uint8_t> input,
 bool is_known_type(std::uint16_t value) noexcept
 {
     return value >= static_cast<std::uint16_t>(ProtocolMessageType::hello)
-        && value <= static_cast<std::uint16_t>(ProtocolMessageType::error);
+        && value <= static_cast<std::uint16_t>(
+            ProtocolMessageType::authentication_accepted);
 }
 
 }  // namespace
@@ -74,6 +75,12 @@ std::string_view to_string(ProtocolMessageType type) noexcept
         return "complete";
     case ProtocolMessageType::error:
         return "error";
+    case ProtocolMessageType::authentication_challenge:
+        return "authentication-challenge";
+    case ProtocolMessageType::authentication_response:
+        return "authentication-response";
+    case ProtocolMessageType::authentication_accepted:
+        return "authentication-accepted";
     }
     return "unknown";
 }

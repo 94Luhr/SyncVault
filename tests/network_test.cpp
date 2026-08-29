@@ -177,6 +177,43 @@ void chunks_transfer_incrementally()
             "repeated network sync should reuse its snapshot manifest");
 }
 
+void authentication_accepts_matching_and_rejects_wrong_tokens()
+{
+    TemporaryDirectory temporary;
+    const auto source = temporary.path() / "source";
+    const auto destination = temporary.path() / "destination";
+    syncvault::Repository::initialize(source);
+    syncvault::Repository::initialize(destination);
+
+    auto attempt = [&](const std::string& client_token, bool should_succeed) {
+        syncvault::ProtocolHandshakeServer server(
+            destination, 0U, "correct horse battery staple");
+        std::exception_ptr server_error;
+        std::thread server_thread([&] {
+            try {
+                static_cast<void>(server.accept_chunk_sync_once());
+            } catch (...) {
+                server_error = std::current_exception();
+            }
+        });
+        bool client_succeeded = true;
+        try {
+            static_cast<void>(syncvault::push_repository_chunks(
+                source, "127.0.0.1", server.local_port(), client_token));
+        } catch (...) {
+            client_succeeded = false;
+        }
+        server_thread.join();
+        require(client_succeeded == should_succeed,
+                "authentication client result is incorrect");
+        require((server_error == nullptr) == should_succeed,
+                "authentication server result is incorrect");
+    };
+
+    attempt("correct horse battery staple", true);
+    attempt("wrong token", false);
+}
+
 void non_repository_server_is_rejected()
 {
     TemporaryDirectory temporary;
@@ -197,6 +234,7 @@ int main()
     try {
         client_and_server_complete_handshake();
         chunks_transfer_incrementally();
+        authentication_accepts_matching_and_rejects_wrong_tokens();
         non_repository_server_is_rejected();
         std::cout << "All network tests passed\n";
         return 0;

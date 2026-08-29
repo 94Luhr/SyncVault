@@ -25,7 +25,8 @@ added after the local storage model is reliable.
 - [x] TCP client/server connection and version handshake
 - [x] TCP incremental content-addressed chunk transfer
 - [x] TCP snapshot manifest transfer with verified restore
-- [ ] Authenticated remote access
+- [x] HMAC-SHA256 challenge-response authentication
+- [ ] Authenticated LAN access
 
 ## Repository layout
 
@@ -119,7 +120,17 @@ build/debug/syncvault.exe serve --once-sync D:/syncvault-copy 39762
 build/debug/syncvault.exe sync-network D:/syncvault-repository 127.0.0.1 39762
 ```
 
-The handshake server currently binds to `127.0.0.1` only. Remote access will be
+For authenticated loopback synchronization, set the same secret in both
+terminals and use the authenticated commands:
+
+```powershell
+$env:SYNCVAULT_TOKEN = "replace-with-a-long-random-secret"
+build/debug/syncvault.exe serve --once-sync-auth D:/syncvault-copy 39763
+build/debug/syncvault.exe sync-network-auth D:/syncvault-repository 127.0.0.1 39763
+```
+
+The secret is used in an HMAC-SHA256 challenge-response and is never sent over
+the connection. The server currently binds to `127.0.0.1` only. Remote access will be
 enabled after authentication is added.
 
 ## MVP acceptance criteria

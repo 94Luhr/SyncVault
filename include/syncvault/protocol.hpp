@@ -24,6 +24,9 @@ enum class ProtocolMessageType : std::uint16_t {
     manifest_data = 8U,
     complete = 9U,
     error = 10U,
+    authentication_challenge = 11U,
+    authentication_response = 12U,
+    authentication_accepted = 13U,
 };
 
 struct ProtocolFrame {

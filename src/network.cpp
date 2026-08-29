@@ -1,5 +1,6 @@
 #include "syncvault/network.hpp"
 
+#include "syncvault/auth.hpp"
 #include "syncvault/chunk_store.hpp"
 #include "syncvault/manifest.hpp"
 #include "syncvault/protocol.hpp"
@@ -15,6 +16,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <random>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -398,6 +400,62 @@ std::uint16_t exchange_client_hello(NativeSocket socket)
     return version;
 }
 
+void authenticate_client(NativeSocket socket, const std::string& token)
+{
+    if (token.empty()) {
+        return;
+    }
+    const auto challenge = receive_frame(socket);
+    if (challenge.type != ProtocolMessageType::authentication_challenge
+        || challenge.payload.size() != 32U) {
+        throw std::runtime_error("invalid authentication challenge");
+    }
+    const auto response = hmac_sha256(token, challenge.payload);
+    send_frame(socket, {
+        ProtocolMessageType::authentication_response,
+        {response.begin(), response.end()},
+    });
+    const auto accepted = receive_frame(socket);
+    if (accepted.type == ProtocolMessageType::error) {
+        throw std::runtime_error("server rejected authentication");
+    }
+    if (accepted.type != ProtocolMessageType::authentication_accepted
+        || !accepted.payload.empty()) {
+        throw std::runtime_error("invalid authentication result");
+    }
+}
+
+void authenticate_server(NativeSocket socket, const std::string& token)
+{
+    if (token.empty()) {
+        return;
+    }
+    std::random_device random;
+    std::vector<std::uint8_t> challenge(32U);
+    for (auto& value : challenge) {
+        value = static_cast<std::uint8_t>(random());
+    }
+    send_frame(socket, {
+        ProtocolMessageType::authentication_challenge,
+        challenge,
+    });
+    const auto response = receive_frame(socket);
+    const auto expected = hmac_sha256(token, challenge);
+    if (response.type != ProtocolMessageType::authentication_response
+        || !constant_time_equal(response.payload, expected)) {
+        const std::string message = "authentication failed";
+        send_frame(socket, {
+            ProtocolMessageType::error,
+            {message.begin(), message.end()},
+        });
+        throw std::runtime_error("client authentication failed");
+    }
+    send_frame(socket, {
+        ProtocolMessageType::authentication_accepted,
+        {},
+    });
+}
+
 std::uint16_t exchange_server_hello(NativeSocket socket)
 {
     const auto version = parse_hello(
@@ -416,8 +474,10 @@ std::uint16_t exchange_server_hello(NativeSocket socket)
 
 ProtocolHandshakeServer::ProtocolHandshakeServer(
     const std::filesystem::path& repository,
-    std::uint16_t port)
+    std::uint16_t port,
+    std::string authentication_token)
 {
+    authentication_token_ = std::move(authentication_token);
     repository_ = std::filesystem::absolute(repository).lexically_normal();
     if (!Repository::is_repository(repository_)) {
         throw std::invalid_argument("server path is not a SyncVault repository");
@@ -488,6 +548,7 @@ HandshakeResult ProtocolHandshakeServer::accept_once()
     try {
         configure_timeouts(peer);
         const auto version = exchange_server_hello(peer);
+        authenticate_server(peer, authentication_token_);
         const auto name = numeric_peer_name(
             reinterpret_cast<const sockaddr*>(&peer_address), peer_length);
         close_socket(peer);
@@ -511,6 +572,7 @@ NetworkChunkSyncResult ProtocolHandshakeServer::accept_chunk_sync_once()
     try {
         configure_timeouts(peer);
         static_cast<void>(exchange_server_hello(peer));
+        authenticate_server(peer, authentication_token_);
         NetworkChunkSyncResult result;
         result.peer = numeric_peer_name(
             reinterpret_cast<const sockaddr*>(&peer_address), peer_length);
@@ -604,7 +666,8 @@ NetworkChunkSyncResult ProtocolHandshakeServer::accept_chunk_sync_once()
 NetworkChunkSyncResult push_repository_chunks(
     const std::filesystem::path& source_repository,
     const std::string& host,
-    std::uint16_t port)
+    std::uint16_t port,
+    std::string authentication_token)
 {
     if (host.empty() || port == 0U) {
         throw std::invalid_argument("protocol server host and port are required");
@@ -621,6 +684,7 @@ NetworkChunkSyncResult push_repository_chunks(
         socket = connect_to(host, port);
         configure_timeouts(socket);
         static_cast<void>(exchange_client_hello(socket));
+        authenticate_client(socket, authentication_token);
         NetworkChunkSyncResult result;
         result.peer = host + ":" + std::to_string(port);
         for (const auto& [id, chunk] : chunks) {
@@ -685,8 +749,10 @@ NetworkChunkSyncResult push_repository_chunks(
     }
 }
 
-HandshakeResult perform_protocol_handshake(const std::string& host,
-                                           std::uint16_t port)
+HandshakeResult perform_protocol_handshake(
+    const std::string& host,
+    std::uint16_t port,
+    std::string authentication_token)
 {
     if (host.empty() || port == 0U) {
         throw std::invalid_argument("protocol server host and port are required");
@@ -697,6 +763,7 @@ HandshakeResult perform_protocol_handshake(const std::string& host,
         socket = connect_to(host, port);
         configure_timeouts(socket);
         const auto version = exchange_client_hello(socket);
+        authenticate_client(socket, authentication_token);
         close_socket(socket);
         cleanup_socket_runtime();
         return {version, host + ":" + std::to_string(port)};
