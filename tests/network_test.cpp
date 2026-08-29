@@ -4,7 +4,9 @@
 #include "syncvault/manifest.hpp"
 #include "syncvault/protocol.hpp"
 #include "syncvault/repository.hpp"
+#include "syncvault/restore.hpp"
 #include "syncvault/snapshot.hpp"
+#include "syncvault/verify.hpp"
 
 #include <chrono>
 #include <exception>
@@ -135,6 +137,20 @@ void chunks_transfer_incrementally()
     require(first_server.chunks_transferred == 3U
                 && first_server.bytes_transferred == 10U,
             "server transfer statistics are incorrect");
+    require(first_client.manifests_transferred == 1U
+                && first_server.manifests_transferred == 1U,
+            "first network sync should transfer its snapshot manifest");
+    require(syncvault::verify_repository(destination_repository).healthy(),
+            "network synchronized repository should pass verification");
+    const auto restored = temporary.path() / "restored";
+    static_cast<void>(syncvault::restore_snapshot(
+        destination_repository, snapshot.snapshot.id, restored));
+    std::ifstream restored_input(restored / "data.bin", std::ios::binary);
+    const std::string restored_text{
+        std::istreambuf_iterator<char>(restored_input),
+        std::istreambuf_iterator<char>()};
+    require(restored_text == "abcdefghij",
+            "network synchronized snapshot should restore byte-for-byte");
 
     const auto manifest =
         syncvault::read_snapshot_manifest(source_repository, snapshot.snapshot.id);
@@ -155,6 +171,10 @@ void chunks_transfer_incrementally()
     require(second_server.chunks_transferred == 0U
                 && second_server.chunks_reused == 3U,
             "server should reuse every existing chunk");
+    require(second_client.manifests_transferred == 0U
+                && second_client.manifests_reused == 1U
+                && second_server.manifests_reused == 1U,
+            "repeated network sync should reuse its snapshot manifest");
 }
 
 void non_repository_server_is_rejected()

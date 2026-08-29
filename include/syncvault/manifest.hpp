@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace syncvault {
@@ -32,6 +34,11 @@ struct SnapshotManifest {
     std::filesystem::path source_root;
     std::vector<ManifestEntry> entries;
 };
+
+[[nodiscard]] bool store_verified_snapshot_manifest(
+    const std::filesystem::path& repository_root,
+    const std::string& snapshot_id,
+    std::span<const std::uint8_t> contents);
 
 [[nodiscard]] SnapshotManifest read_snapshot_manifest(
     const std::filesystem::path& repository_root,

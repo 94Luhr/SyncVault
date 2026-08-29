@@ -1,5 +1,6 @@
 #include "syncvault/manifest.hpp"
 
+#include "syncvault/chunk_store.hpp"
 #include "syncvault/repository.hpp"
 #include "syncvault/sha256.hpp"
 
@@ -192,6 +193,64 @@ std::string read_all(const std::filesystem::path& path)
 }
 
 }  // namespace
+
+bool store_verified_snapshot_manifest(
+    const std::filesystem::path& repository_root,
+    const std::string& snapshot_id,
+    std::span<const std::uint8_t> contents)
+{
+    if (!Repository::is_repository(repository_root)) {
+        throw std::invalid_argument("path is not a SyncVault repository");
+    }
+    if (!valid_snapshot_id(snapshot_id)) {
+        throw std::invalid_argument("invalid snapshot ID");
+    }
+    const auto destination =
+        repository_root / "snapshots" / (snapshot_id + ".svsnap");
+    if (std::filesystem::exists(destination)) {
+        const auto existing = read_all(destination);
+        if (existing.size() != contents.size()
+            || !std::equal(existing.begin(), existing.end(), contents.begin())) {
+            throw std::runtime_error("conflicting snapshot manifest");
+        }
+        static_cast<void>(read_snapshot_manifest(repository_root, snapshot_id));
+        return false;
+    }
+    const auto temporary =
+        repository_root / "tmp" / ("network-" + snapshot_id + ".tmp");
+    try {
+        {
+            std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+            if (!output) {
+                throw std::runtime_error("cannot create temporary manifest");
+            }
+            output.write(reinterpret_cast<const char*>(contents.data()),
+                         static_cast<std::streamsize>(contents.size()));
+            output.flush();
+            if (!output) {
+                throw std::runtime_error("cannot write temporary manifest");
+            }
+        }
+        std::filesystem::rename(temporary, destination);
+        const auto manifest =
+            read_snapshot_manifest(repository_root, snapshot_id);
+        for (const auto& entry : manifest.entries) {
+            for (const auto& chunk : entry.chunks) {
+                if (!has_verified_chunk(
+                        repository_root, chunk.digest, chunk.size)) {
+                    throw std::runtime_error(
+                        "snapshot references a missing chunk");
+                }
+            }
+        }
+        return true;
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        std::filesystem::remove(destination, ignored);
+        throw;
+    }
+}
 
 SnapshotManifest read_snapshot_manifest(
     const std::filesystem::path& repository_root,

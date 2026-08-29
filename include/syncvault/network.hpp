@@ -10,6 +10,9 @@ struct NetworkChunkSyncResult {
     std::uint64_t chunks_transferred = 0U;
     std::uint64_t chunks_reused = 0U;
     std::uint64_t bytes_transferred = 0U;
+    std::uint64_t manifests_transferred = 0U;
+    std::uint64_t manifests_reused = 0U;
+    std::uint64_t manifest_bytes_transferred = 0U;
     std::string peer;
 };
 

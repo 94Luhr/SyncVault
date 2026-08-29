@@ -21,7 +21,8 @@ SyncVault 是一个使用 C++20 开发的增量备份与文件同步项目。第
 - [x] 带 SHA-256 负载校验的版本化二进制网络帧
 - [x] TCP 客户端/服务端连接与版本握手
 - [x] TCP 内容寻址数据块增量传输
-- [ ] TCP 快照清单传输
+- [x] TCP 快照清单传输与校验恢复
+- [ ] 带身份认证的远程访问
 
 ## 仓库目录结构
 
@@ -108,8 +109,8 @@ build/debug/syncvault.exe ping 127.0.0.1 39761
 仅传输目标仓库缺少的内容寻址数据块：
 
 ```powershell
-build/debug/syncvault.exe serve --once-chunks D:/syncvault-copy 39762
-build/debug/syncvault.exe push-chunks D:/syncvault-repository 127.0.0.1 39762
+build/debug/syncvault.exe serve --once-sync D:/syncvault-copy 39762
+build/debug/syncvault.exe sync-network D:/syncvault-repository 127.0.0.1 39762
 ```
 
 当前握手服务端仅绑定 `127.0.0.1`。加入身份认证后再开放远程访问。

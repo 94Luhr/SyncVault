@@ -346,6 +346,47 @@ std::vector<std::uint8_t> read_chunk_contents(
     return contents;
 }
 
+std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path)
+{
+    std::error_code error;
+    const auto size = std::filesystem::file_size(path, error);
+    if (error || size > maximum_protocol_payload_size) {
+        throw std::runtime_error("cannot read network manifest");
+    }
+    std::vector<std::uint8_t> contents(static_cast<std::size_t>(size));
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        throw std::runtime_error("cannot open network manifest");
+    }
+    input.read(reinterpret_cast<char*>(contents.data()),
+               static_cast<std::streamsize>(contents.size()));
+    if (input.gcount() != static_cast<std::streamsize>(contents.size())
+        || input.bad()) {
+        throw std::runtime_error("cannot read network manifest");
+    }
+    return contents;
+}
+
+bool valid_network_snapshot_id(const std::string& id)
+{
+    if (id.empty() || id.size() > 80U) {
+        return false;
+    }
+    return std::all_of(id.begin(), id.end(), [](char value) {
+        return (value >= '0' && value <= '9')
+            || (value >= 'a' && value <= 'f') || value == '-';
+    });
+}
+
+ProtocolFrame make_manifest_offer(const std::string& id,
+                                  std::span<const std::uint8_t> contents)
+{
+    std::vector<std::uint8_t> payload(id.begin(), id.end());
+    const auto digest = sha256(contents);
+    payload.insert(payload.end(), digest.begin(), digest.end());
+    return {ProtocolMessageType::manifest_offer, std::move(payload)};
+}
+
 std::uint16_t exchange_client_hello(NativeSocket socket)
 {
     send_frame(socket, {ProtocolMessageType::hello, hello_payload()});
@@ -483,6 +524,50 @@ NetworkChunkSyncResult ProtocolHandshakeServer::accept_chunk_sync_once()
                 close_socket(peer);
                 return result;
             }
+            if (frame.type == ProtocolMessageType::manifest_offer) {
+                if (frame.payload.size() <= Sha256Digest{}.size()) {
+                    throw std::runtime_error("invalid manifest offer");
+                }
+                const auto id_size = frame.payload.size() - Sha256Digest{}.size();
+                const std::string id(frame.payload.begin(),
+                                     frame.payload.begin() + id_size);
+                if (!valid_network_snapshot_id(id)) {
+                    throw std::runtime_error("invalid network snapshot ID");
+                }
+                Sha256Digest offered_digest{};
+                std::copy_n(frame.payload.begin() + id_size,
+                            offered_digest.size(), offered_digest.begin());
+                const auto destination =
+                    repository_ / "snapshots" / (id + ".svsnap");
+                bool needed = true;
+                if (std::filesystem::exists(destination)) {
+                    const auto existing = read_binary_file(destination);
+                    if (sha256(existing) != offered_digest) {
+                        throw std::runtime_error("conflicting snapshot manifest");
+                    }
+                    static_cast<void>(
+                        read_snapshot_manifest(repository_, id));
+                    needed = false;
+                }
+                send_frame(peer, {
+                    ProtocolMessageType::manifest_needed,
+                    {static_cast<std::uint8_t>(needed ? 1U : 0U)},
+                });
+                if (!needed) {
+                    ++result.manifests_reused;
+                    continue;
+                }
+                const auto data = receive_frame(peer);
+                if (data.type != ProtocolMessageType::manifest_data
+                    || sha256(data.payload) != offered_digest) {
+                    throw std::runtime_error("invalid manifest data message");
+                }
+                static_cast<void>(store_verified_snapshot_manifest(
+                    repository_, id, data.payload));
+                ++result.manifests_transferred;
+                result.manifest_bytes_transferred += data.payload.size();
+                continue;
+            }
             const auto chunk = parse_chunk_offer(frame);
             const auto needed =
                 !has_verified_chunk(repository_, chunk.digest, chunk.size);
@@ -562,6 +647,27 @@ NetworkChunkSyncResult push_repository_chunks(
             });
             ++result.chunks_transferred;
             result.bytes_transferred += chunk.size;
+        }
+        for (const auto& summary : list_snapshots(source)) {
+            const auto contents = read_binary_file(
+                source / "snapshots" / (summary.id + ".svsnap"));
+            send_frame(socket, make_manifest_offer(summary.id, contents));
+            const auto response = receive_frame(socket);
+            if (response.type != ProtocolMessageType::manifest_needed
+                || response.payload.size() != 1U
+                || response.payload[0] > 1U) {
+                throw std::runtime_error("invalid manifest negotiation response");
+            }
+            if (response.payload[0] == 0U) {
+                ++result.manifests_reused;
+                continue;
+            }
+            send_frame(socket, {
+                ProtocolMessageType::manifest_data,
+                contents,
+            });
+            ++result.manifests_transferred;
+            result.manifest_bytes_transferred += contents.size();
         }
         send_frame(socket, {ProtocolMessageType::complete, {}});
         const auto completion = receive_frame(socket);
