@@ -28,6 +28,7 @@ added after the local storage model is reliable.
 - [x] HMAC-SHA256 challenge-response authentication
 - [x] Authenticated LAN access with configurable IPv4 binding
 - [x] Continuous synchronization server with per-connection error isolation
+- [x] Bounded concurrent clients with race-safe repository publication
 
 ## Repository layout
 
@@ -141,11 +142,14 @@ For a long-running authenticated server that accepts clients continuously, use
 
 ```powershell
 $env:SYNCVAULT_TOKEN = "replace-with-a-long-random-secret"
-build/debug/syncvault.exe serve --sync-auth D:/syncvault-copy 39763 0.0.0.0
+build/debug/syncvault.exe serve --sync-auth D:/syncvault-copy 39763 0.0.0.0 4
 ```
 
 Press `Ctrl+C` to stop the server. A rejected or malformed client connection is
 reported without stopping the listener, so later valid clients can still sync.
+The optional final argument limits concurrent clients from 1 to 64 and defaults
+to 4. Chunk writes remain concurrent, while manifest publication is serialized
+to prevent clients from observing a partially validated snapshot.
 
 ## MVP acceptance criteria
 

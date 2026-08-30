@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <mutex>
 #include <string>
 
 namespace syncvault {
@@ -42,6 +43,7 @@ private:
     std::filesystem::path repository_;
     std::string authentication_token_;
     std::string bind_address_;
+    std::mutex manifest_mutex_;
     std::uintptr_t listener_ = static_cast<std::uintptr_t>(-1);
     std::uint16_t local_port_ = 0U;
     bool socket_runtime_initialized_ = false;

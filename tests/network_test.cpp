@@ -8,6 +8,8 @@
 #include "syncvault/snapshot.hpp"
 #include "syncvault/verify.hpp"
 
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <exception>
 #include <filesystem>
@@ -23,6 +25,16 @@ void require(bool condition, const std::string& message)
 {
     if (!condition) {
         throw std::runtime_error(message);
+    }
+}
+
+template <typename Function>
+void run_test(const std::string& name, Function function)
+{
+    try {
+        function();
+    } catch (const std::exception& error) {
+        throw std::runtime_error(name + ": " + error.what());
     }
 }
 
@@ -299,6 +311,97 @@ void authenticated_server_recovers_after_rejected_client()
             "server did not accept a valid client after a rejection");
 }
 
+void concurrent_clients_publish_repository_safely()
+{
+    TemporaryDirectory temporary;
+    const auto source = temporary.path() / "source";
+    const auto destination = temporary.path() / "destination";
+    const auto source_data = temporary.path() / "source-data";
+    syncvault::Repository::initialize(source);
+    syncvault::Repository::initialize(destination);
+    std::filesystem::create_directories(source_data);
+    std::ofstream(source_data / "shared.bin", std::ios::binary)
+        << std::string(64U * 1024U, 'x');
+    const auto snapshot = syncvault::create_snapshot(source, source_data, 4096U);
+
+    syncvault::ProtocolHandshakeServer server(
+        destination, 0U, "concurrent-test-token");
+    std::array<std::exception_ptr, 2U> server_errors{};
+    std::array<std::exception_ptr, 2U> client_errors{};
+    std::array<std::thread, 2U> server_threads{
+        std::thread([&] {
+            try {
+                static_cast<void>(server.accept_chunk_sync_once());
+            } catch (...) {
+                server_errors[0] = std::current_exception();
+            }
+        }),
+        std::thread([&] {
+            try {
+                static_cast<void>(server.accept_chunk_sync_once());
+            } catch (...) {
+                server_errors[1] = std::current_exception();
+            }
+        }),
+    };
+
+    std::atomic<bool> start_clients{false};
+    std::array<std::thread, 2U> client_threads{
+        std::thread([&] {
+            while (!start_clients.load()) {
+                std::this_thread::yield();
+            }
+            try {
+                static_cast<void>(syncvault::push_repository_chunks(
+                    source, "127.0.0.1", server.local_port(),
+                    "concurrent-test-token"));
+            } catch (...) {
+                client_errors[0] = std::current_exception();
+            }
+        }),
+        std::thread([&] {
+            while (!start_clients.load()) {
+                std::this_thread::yield();
+            }
+            try {
+                static_cast<void>(syncvault::push_repository_chunks(
+                    source, "127.0.0.1", server.local_port(),
+                    "concurrent-test-token"));
+            } catch (...) {
+                client_errors[1] = std::current_exception();
+            }
+        }),
+    };
+    start_clients.store(true);
+
+    for (auto& client : client_threads) {
+        client.join();
+    }
+    for (auto& worker : server_threads) {
+        worker.join();
+    }
+    for (const auto& error : server_errors) {
+        if (error) {
+            std::rethrow_exception(error);
+        }
+    }
+    for (const auto& error : client_errors) {
+        if (error) {
+            std::rethrow_exception(error);
+        }
+    }
+
+    require(syncvault::verify_repository(destination).healthy(),
+            "repository should remain healthy after concurrent synchronization");
+    const auto restored = temporary.path() / "restored";
+    static_cast<void>(syncvault::restore_snapshot(
+        destination, snapshot.snapshot.id, restored));
+    require(std::filesystem::file_size(restored / "shared.bin") == 64U * 1024U,
+            "concurrently synchronized snapshot did not restore correctly");
+    require(std::filesystem::is_empty(destination / "tmp"),
+            "concurrent synchronization left temporary files behind");
+}
+
 void non_repository_server_is_rejected()
 {
     TemporaryDirectory temporary;
@@ -317,12 +420,17 @@ void non_repository_server_is_rejected()
 int main()
 {
     try {
-        client_and_server_complete_handshake();
-        chunks_transfer_incrementally();
-        authentication_accepts_matching_and_rejects_wrong_tokens();
-        authenticated_server_supports_configurable_binding();
-        authenticated_server_recovers_after_rejected_client();
-        non_repository_server_is_rejected();
+        run_test("handshake", client_and_server_complete_handshake);
+        run_test("incremental chunks", chunks_transfer_incrementally);
+        run_test("authentication",
+                 authentication_accepts_matching_and_rejects_wrong_tokens);
+        run_test("configurable binding",
+                 authenticated_server_supports_configurable_binding);
+        run_test("rejection recovery",
+                 authenticated_server_recovers_after_rejected_client);
+        run_test("concurrent publication",
+                 concurrent_clients_publish_repository_safely);
+        run_test("non-repository rejection", non_repository_server_is_rejected);
         std::cout << "All network tests passed\n";
         return 0;
     } catch (const std::exception& error) {

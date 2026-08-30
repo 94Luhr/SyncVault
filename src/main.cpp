@@ -15,9 +15,12 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <vector>
 
 namespace {
 
@@ -35,8 +38,8 @@ void print_usage()
         << "  syncvault serve --once <repository> <port> [bind-address]\n"
         << "  syncvault serve --once-sync <repository> <port> [bind-address]\n"
         << "  syncvault serve --once-sync-auth <repository> <port> [bind-address]\n"
-        << "  syncvault serve --sync <repository> <port> [bind-address]\n"
-        << "  syncvault serve --sync-auth <repository> <port> [bind-address]\n"
+        << "  syncvault serve --sync <repository> <port> [bind-address] [max-clients]\n"
+        << "  syncvault serve --sync-auth <repository> <port> [bind-address] [max-clients]\n"
         << "  syncvault snapshot create <repository> <source>\n"
         << "  syncvault snapshot list <repository>\n"
         << "  syncvault snapshot restore <repository> <id> <destination>\n"
@@ -84,6 +87,31 @@ std::uint16_t parse_port(const Character* value)
         throw std::invalid_argument("port must be between 1 and 65535");
     }
     return static_cast<std::uint16_t>(port);
+}
+
+template <typename Character>
+std::size_t parse_max_clients(const Character* value)
+{
+    std::size_t count = 0U;
+    if (*value == static_cast<Character>(0)) {
+        throw std::invalid_argument("max-clients must be between 1 and 64");
+    }
+    for (; *value != static_cast<Character>(0); ++value) {
+        if (*value < static_cast<Character>('0')
+            || *value > static_cast<Character>('9')) {
+            throw std::invalid_argument("max-clients must be between 1 and 64");
+        }
+        const auto digit =
+            static_cast<std::size_t>(*value - static_cast<Character>('0'));
+        if (count > (64U - digit) / 10U) {
+            throw std::invalid_argument("max-clients must be between 1 and 64");
+        }
+        count = count * 10U + digit;
+    }
+    if (count == 0U) {
+        throw std::invalid_argument("max-clients must be between 1 and 64");
+    }
+    return count;
 }
 
 std::string authentication_token_from_environment()
@@ -138,38 +166,57 @@ int run_cli(int argc, Character* argv[])
             return 0;
         }
 
-        if ((argc == 5 || argc == 6)
+        if ((argc >= 5 && argc <= 7)
             && argument_equals(argv[1], "serve")
             && (argument_equals(argv[2], "--sync")
                 || argument_equals(argv[2], "--sync-auth"))) {
             const auto authenticated = argument_equals(argv[2], "--sync-auth");
+            const auto max_clients = argc == 7
+                ? parse_max_clients(argv[6])
+                : std::size_t{4U};
             syncvault::ProtocolHandshakeServer server(
                 std::filesystem::path(argv[3]), parse_port(argv[4]),
                 authenticated ? authentication_token_from_environment()
                               : std::string{},
-                argc == 6 ? std::filesystem::path(argv[5]).string()
+                argc >= 6 ? std::filesystem::path(argv[5]).string()
                           : std::string{"127.0.0.1"});
             std::cout << "Listening continuously for chunk sync on "
                       << server.bind_address() << ':' << server.local_port()
-                      << " (press Ctrl+C to stop)\n";
-            while (true) {
-                try {
-                    const auto result = server.accept_chunk_sync_once();
-                    std::cout << "Received " << result.chunks_transferred
-                              << " chunk(s), reused " << result.chunks_reused
-                              << "; received " << result.manifests_transferred
-                              << " manifest(s), reused "
-                              << result.manifests_reused << "; wrote "
-                              << result.bytes_transferred
-                              << " content byte(s) and "
-                              << result.manifest_bytes_transferred
-                              << " manifest byte(s) from " << result.peer
-                              << '\n';
-                } catch (const std::exception& error) {
-                    std::cerr << "Rejected synchronization connection: "
-                              << error.what() << '\n';
-                }
+                      << " with up to " << max_clients
+                      << " concurrent client(s) (press Ctrl+C to stop)\n";
+
+            std::mutex output_mutex;
+            std::vector<std::thread> workers;
+            workers.reserve(max_clients);
+            for (std::size_t index = 0U; index < max_clients; ++index) {
+                workers.emplace_back([&] {
+                    while (true) {
+                        try {
+                            const auto result = server.accept_chunk_sync_once();
+                            const std::lock_guard lock(output_mutex);
+                            std::cout << "Received " << result.chunks_transferred
+                                      << " chunk(s), reused "
+                                      << result.chunks_reused << "; received "
+                                      << result.manifests_transferred
+                                      << " manifest(s), reused "
+                                      << result.manifests_reused << "; wrote "
+                                      << result.bytes_transferred
+                                      << " content byte(s) and "
+                                      << result.manifest_bytes_transferred
+                                      << " manifest byte(s) from "
+                                      << result.peer << '\n';
+                        } catch (const std::exception& error) {
+                            const std::lock_guard lock(output_mutex);
+                            std::cerr << "Rejected synchronization connection: "
+                                      << error.what() << '\n';
+                        }
+                    }
+                });
             }
+            for (auto& worker : workers) {
+                worker.join();
+            }
+            return 0;
         }
 
         if ((argc == 5 || argc == 6)

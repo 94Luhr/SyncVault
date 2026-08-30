@@ -3,10 +3,12 @@
 #include "syncvault/repository.hpp"
 #include "syncvault/sha256.hpp"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <span>
 #include <stdexcept>
 #include <system_error>
@@ -16,6 +18,12 @@ namespace syncvault {
 namespace {
 
 std::atomic<std::uint64_t> temporary_sequence{0U};
+std::array<std::mutex, 64U> chunk_mutexes;
+
+std::mutex& chunk_mutex(const Sha256Digest& digest)
+{
+    return chunk_mutexes[digest.front() % chunk_mutexes.size()];
+}
 
 void verify_existing_chunk(const std::filesystem::path& path,
                            std::size_t expected_size,
@@ -56,6 +64,7 @@ bool store_chunk(const std::filesystem::path& root,
                  std::span<const std::uint8_t> contents,
                  const Sha256Digest& digest)
 {
+    const std::lock_guard lock(chunk_mutex(digest));
     const auto destination = chunk_path(root, digest);
     if (std::filesystem::exists(destination)) {
         verify_existing_chunk(destination, contents.size(), digest);
@@ -117,6 +126,7 @@ bool has_verified_chunk(const std::filesystem::path& repository_root,
     if (!Repository::is_repository(repository_root)) {
         throw std::invalid_argument("path is not a SyncVault repository");
     }
+    const std::lock_guard lock(chunk_mutex(digest));
     const auto path = chunk_path(repository_root, digest);
     if (!std::filesystem::exists(path)) {
         return false;

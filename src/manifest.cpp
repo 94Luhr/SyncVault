@@ -4,7 +4,9 @@
 #include "syncvault/repository.hpp"
 #include "syncvault/sha256.hpp"
 
+#include <atomic>
 #include <charconv>
+#include <chrono>
 #include <fstream>
 #include <limits>
 #include <set>
@@ -15,6 +17,21 @@
 
 namespace syncvault {
 namespace {
+
+std::atomic<std::uint64_t> manifest_temporary_sequence{0U};
+
+std::filesystem::path manifest_temporary_path(
+    const std::filesystem::path& repository_root,
+    const std::string& snapshot_id)
+{
+    const auto ticks = std::chrono::steady_clock::now()
+                           .time_since_epoch()
+                           .count();
+    const auto sequence = manifest_temporary_sequence.fetch_add(1U);
+    return repository_root / "tmp"
+        / ("network-" + snapshot_id + "." + std::to_string(ticks) + "."
+           + std::to_string(sequence) + ".tmp");
+}
 
 bool valid_snapshot_id(std::string_view id)
 {
@@ -207,7 +224,7 @@ bool store_verified_snapshot_manifest(
     }
     const auto destination =
         repository_root / "snapshots" / (snapshot_id + ".svsnap");
-    if (std::filesystem::exists(destination)) {
+    const auto verify_existing = [&] {
         const auto existing = read_all(destination);
         if (existing.size() != contents.size()
             || !std::equal(existing.begin(), existing.end(), contents.begin())) {
@@ -215,9 +232,14 @@ bool store_verified_snapshot_manifest(
         }
         static_cast<void>(read_snapshot_manifest(repository_root, snapshot_id));
         return false;
+    };
+    if (std::filesystem::exists(destination)) {
+        return verify_existing();
     }
-    const auto temporary =
-        repository_root / "tmp" / ("network-" + snapshot_id + ".tmp");
+
+    const auto temporary = manifest_temporary_path(
+        repository_root, snapshot_id);
+    bool published = false;
     try {
         {
             std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -231,7 +253,21 @@ bool store_verified_snapshot_manifest(
                 throw std::runtime_error("cannot write temporary manifest");
             }
         }
-        std::filesystem::rename(temporary, destination);
+
+        std::error_code rename_error;
+        std::filesystem::rename(temporary, destination, rename_error);
+        if (rename_error) {
+            if (std::filesystem::exists(destination)) {
+                std::error_code ignored;
+                std::filesystem::remove(temporary, ignored);
+                return verify_existing();
+            }
+            throw std::filesystem::filesystem_error(
+                "cannot publish snapshot manifest",
+                temporary, destination, rename_error);
+        }
+        published = true;
+
         const auto manifest =
             read_snapshot_manifest(repository_root, snapshot_id);
         for (const auto& entry : manifest.entries) {
@@ -247,7 +283,9 @@ bool store_verified_snapshot_manifest(
     } catch (...) {
         std::error_code ignored;
         std::filesystem::remove(temporary, ignored);
-        std::filesystem::remove(destination, ignored);
+        if (published) {
+            std::filesystem::remove(destination, ignored);
+        }
         throw;
     }
 }

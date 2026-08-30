@@ -241,12 +241,18 @@ NativeSocket connect_to(const std::string& host, std::uint16_t port)
     }
 
     NativeSocket connected = invalid_socket;
+    int connection_error = 0;
     for (auto* address = addresses; address != nullptr;
          address = address->ai_next) {
         const auto candidate = socket(address->ai_family,
                                       address->ai_socktype,
                                       address->ai_protocol);
         if (candidate == invalid_socket) {
+#ifdef _WIN32
+            connection_error = WSAGetLastError();
+#else
+            connection_error = errno;
+#endif
             continue;
         }
         if (connect(candidate, address->ai_addr,
@@ -254,11 +260,24 @@ NativeSocket connect_to(const std::string& host, std::uint16_t port)
             connected = candidate;
             break;
         }
+#ifdef _WIN32
+        connection_error = WSAGetLastError();
+#else
+        connection_error = errno;
+#endif
         close_socket(candidate);
     }
     freeaddrinfo(addresses);
     if (connected == invalid_socket) {
-        throw_socket_error("connecting to protocol server");
+#ifdef _WIN32
+        throw std::runtime_error(
+            "connecting to protocol server failed with socket error "
+            + std::to_string(connection_error));
+#else
+        throw std::runtime_error(
+            "connecting to protocol server failed: "
+            + std::string(std::strerror(connection_error)));
+#endif
     }
     return connected;
 }
@@ -604,6 +623,7 @@ NetworkChunkSyncResult ProtocolHandshakeServer::accept_chunk_sync_once()
                 return result;
             }
             if (frame.type == ProtocolMessageType::manifest_offer) {
+                const std::lock_guard manifest_lock(manifest_mutex_);
                 if (frame.payload.size() <= Sha256Digest{}.size()) {
                     throw std::runtime_error("invalid manifest offer");
                 }
@@ -668,9 +688,8 @@ NetworkChunkSyncResult ProtocolHandshakeServer::accept_chunk_sync_once()
             }
             const auto contents = std::span<const std::uint8_t>(data.payload)
                                       .subspan(chunk.digest.size());
-            if (!store_verified_chunk(repository_, contents, chunk.digest)) {
-                throw std::runtime_error("chunk appeared during network transfer");
-            }
+            static_cast<void>(store_verified_chunk(
+                repository_, contents, chunk.digest));
             ++result.chunks_transferred;
             result.bytes_transferred += chunk.size;
         }
